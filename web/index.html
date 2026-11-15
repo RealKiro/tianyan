@@ -19,40 +19,68 @@
   <span>文件(F)</span><span>视图(V)</span><span>远程(R)</span><span>控制(C)</span><span>系统(S)</span><span>工具(T)</span><span>帮助(H)</span>
 </nav>
 
-<div class="toolbar">
-  <span class="grp">声音</span>
-  <button data-cmd="muteAll">🔇 全体静音</button>
-  <button data-cmd="unmuteAll">🔊 取消静音</button>
-  <span class="sep"></span>
-  <span class="grp">屏幕</span>
-  <button data-cmd="blackAll">⬛ 全体黑屏</button>
-  <button data-cmd="unblackAll">🖥️ 解除黑屏</button>
-  <button data-cmd="lockAll">🔒 全体锁定</button>
-  <span class="sep"></span>
-  <span class="grp">程序</span>
-  <button data-cmd="openUrl">🌐 打开网页</button>
-  <button data-cmd="openApp">📦 打开应用</button>
-  <button data-cmd="closeApp">❌ 关闭应用</button>
-  <button data-cmd="closeWindow">🚫 关闭网页</button>
-  <span class="sep"></span>
-  <span class="grp">电源</span>
-  <button data-cmd="shutdown">⏻ 关机</button>
-  <button data-cmd="reboot">🔄 重启</button>
-  <button data-cmd="wake">🔌 远程开机</button>
-  <span class="sep"></span>
-  <span class="grp">资源</span>
-  <button data-cmd="sendFile">📁 发送文件</button>
-  <button data-cmd="blocklist">🛡️ 黑白名单</button>
-  <span class="sep"></span>
-  <span class="grp">数据</span>
-  <button data-cmd="exportCsv">⬇️ 导出CSV</button>
-  <button data-cmd="importData">⬆️ 导入</button>
+<!-- 常用工具：一排 -->
+<div class="commontools">
+  <button data-cmd="broadcast"><i>📺</i><span>屏幕广播</span></button>
+  <button data-cmd="screenshot"><i>📸</i><span>屏幕截图</span></button>
+  <button data-cmd="lockScreen"><i>🔒</i><span>锁屏</span></button>
+  <button data-cmd="muteAll"><i>🔇</i><span>静音</span></button>
+  <button data-cmd="remoteCmd"><i>🖥️</i><span>远程命令</span></button>
+  <button data-cmd="sendFile"><i>📁</i><span>文件分发</span></button>
+  <button data-cmd="fileSubmit"><i>📥</i><span>文件提交</span></button>
+  <button data-cmd="exam"><i>📝</i><span>考试</span></button>
+  <button data-cmd="shutdown"><i>⏻</i><span>关机</span></button>
+  <button data-cmd="reboot"><i>🔄</i><span>重启</span></button>
+  <button data-cmd="wake"><i>🔌</i><span>远程开机</span></button>
+</div>
+
+<!-- 监控筛选栏（参考 Veyon Monitoring：搜索 / 分组 / 排序 / 隐藏离线） -->
+<div class="filterbar">
+  <input id="q" type="text" placeholder="🔍 搜索名称 / IP / 编号 / 用户">
+  <select id="grpFilter"><option value="">全部分组</option></select>
+  <select id="sortBy">
+    <option value="name">按名称排序</option>
+    <option value="id">按编号排序</option>
+    <option value="ip">按 IP 排序</option>
+  </select>
+  <label><input type="checkbox" id="hideOffline"> 隐藏离线</label>
 </div>
 
 <div class="layout">
+  <!-- 基础功能：一列 -->
   <aside class="sidebar">
-    <div class="side-title">学生机列表</div>
-    <div id="studentList"></div>
+    <div class="section open">
+      <div class="section-header">👥 班级管理 · 学生列表
+        <span class="hdr-actions"><button data-export>导出</button><button data-import>导入</button></span>
+      </div>
+      <div class="section-body"><div id="studentList"></div></div>
+    </div>
+    <div class="section">
+      <div class="section-header">📂 文件分发 / 接收状态</div>
+      <div class="section-body" id="sec-files"><div class="hint">暂无记录</div></div>
+    </div>
+    <div class="section">
+      <div class="section-header">🛡️ 规则控制</div>
+      <div class="section-body">
+        <a class="sub-link" data-rule="black">程序控制 · 黑名单</a>
+        <a class="sub-link" data-rule="white">程序控制 · 白名单</a>
+        <a class="sub-link" data-rule="black">网页控制 · 黑名单</a>
+        <a class="sub-link" data-rule="white">网页控制 · 白名单</a>
+        <div class="exempt-row">
+          <button data-exempt="on">🔓 解除所选限制</button>
+          <button data-exempt="off">🔒 恢复所选限制</button>
+        </div>
+        <div class="hint">未选中时对全体学生生效；可用于奖励已完成作业的学生自由使用软件与网页</div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-header">📢 广播审批<span id="reqBadge" class="req-badge hidden"></span></div>
+      <div class="section-body" id="broadcastReqs"><div class="hint">学生请求广播自己的屏幕时，会在此等待教师批准</div></div>
+    </div>
+    <div class="section">
+      <div class="section-header">👥 分组讨论</div>
+      <div class="section-body"><div class="hint">小组讨论倒计时、任务清单与按组投屏将在后续版本提供</div></div>
+    </div>
   </aside>
 
   <main id="grid" class="grid"></main>
@@ -65,6 +93,7 @@
 
 <footer class="statusbar">
   <span id="statusText">在线 0 / 共 0 台</span>
+  <span id="demoStatus" class="demo-status hidden"></span>
   <span class="spacer"></span>
   <span>双击缩略图进入远程操控 · 选中学生后可用工具栏批量操作</span>
 </footer>
@@ -73,9 +102,10 @@
   <div class="full-tools">
     <span id="fullTitle"></span>
     <button id="fullControl">🖱️ 控制: 关</button>
-    <button id="fullBlack">⬛ 黑屏</button>
+    <button id="fullShot">📸 截图</button>
+    <button id="fullExempt">🔓 解除限制</button>
+    <button id="fullLockScreen">🔒 锁屏</button>
     <button id="fullMute">🔇 静音</button>
-    <button id="fullLock">🔒 锁定</button>
     <button id="fullShutdown">⏻ 关机</button>
     <button id="fullOpen">🌐 打开</button>
     <button id="fullMsg">💬 发消息</button>

@@ -48,6 +48,12 @@ jobs:
         run: |
           go build -o teacher ./cmd/teacher
           go build -o student ./cmd/student
+      - name: Cross-compile darwin amd64 (cgo)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 \
+            CC="$(xcrun -f clang) -arch x86_64" go build ./...
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -57,3 +63,31 @@ jobs:
             student
             teacher.exe
             student.exe
+
+  # Cross-compile guard: every release target (UOS/Kylin LoongArch/MIPS,
+  # Linux arm64, Android, macOS arches) must keep compiling as the codebase
+  # evolves. Static (CGO disabled) builds — same as release packaging.
+  cross-compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Verify all release targets compile
+        shell: bash
+        run: |
+          set -e
+          # darwin is excluded here: its screen capture requires cgo and is
+          # exercised natively (incl. amd64 cross) in the macOS build job.
+          for target in \
+            "windows amd64 1" \
+            "linux amd64 0" \
+            "linux arm64 0" \
+            "linux loong64 0" \
+            "linux mips64le 0" \
+            "android arm64 0"; do
+            set -- $target
+            echo "== $1/$2 (CGO=$3) =="
+            CGO_ENABLED=$3 GOOS=$1 GOARCH=$2 go build ./...
+          done

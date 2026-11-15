@@ -1,49 +1,130 @@
 name: Release
 
+# Multi-platform packaging: every entry builds teacher + student install
+# packages and publishes them to the GitHub Release for the pushed tag.
+# Windows zip; Linux/UOS/Kylin deb + tar.gz; macOS .app tar.gz;
+# Android = experimental Termux binary.
+#
+# iOS/iPadOS and HarmonyOS have no viable installable package for a Go
+# desktop-control architecture (no App Store distribution without signing,
+# sandbox forbids screen capture/input injection, no Go toolchain for
+# ArkTS) — see README "平台支持".
+
 on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  release:
+  build:
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest
-            name: windows-amd64
-          - os: ubuntu-latest
-            name: linux-amd64
-          - os: macos-latest
-            name: darwin-amd64
+          # Windows（教师端 + 学生端，zip 安装包）
+          - { os: windows-latest, name: windows-amd64, goos: windows, goarch: amd64, cgo: "1" }
+          # Linux 通用（deb + tar.gz；CGO 关闭 → 静态二进制，免 glibc 依赖）
+          - { os: ubuntu-latest, name: linux-amd64, goos: linux, goarch: amd64, cgo: "0", deb: "1", debarch: amd64 }
+          - { os: ubuntu-latest, name: linux-arm64, goos: linux, goarch: arm64, cgo: "0", deb: "1", debarch: arm64 }
+          # 统信 UOS（deb；LoongArch / 旧 MIPS 机型）
+          - { os: ubuntu-latest, name: uos-loong64, goos: linux, goarch: loong64, cgo: "0", deb: "1", debarch: loong64 }
+          - { os: ubuntu-latest, name: uos-mips64el, goos: linux, goarch: mips64le, cgo: "0" }
+          # 麒麟操作系统（deb；arm64 机型如飞腾/鲲鹏）
+          - { os: ubuntu-latest, name: kylin-arm64, goos: linux, goarch: arm64, cgo: "0", deb: "1", debarch: arm64, tag: kylin }
+          # macOS（.app 包，原生 cgo 编译；Intel + Apple Silicon）
+          - { os: macos-latest, name: darwin-arm64, goos: darwin, goarch: arm64, cgo: "1" }
+          - { os: macos-latest, name: darwin-amd64, goos: darwin, goarch: amd64, cgo: "1" }
+          # Android（实验性：Termux 运行，无屏幕采集/注入）
+          - { os: ubuntu-latest, name: android-arm64, goos: android, goarch: arm64, cgo: "0", studentonly: "1" }
     runs-on: ${{ matrix.os }}
+    env:
+      VERSION: ${{ github.ref_name }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - name: Install Linux X11 dependencies
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libx11-dev libxext-dev libxrandr-dev
-      - name: Build
+
+      - name: Build & assemble (bash)
+        shell: bash
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: ${{ matrix.cgo }}
+        run: |
+          chmod +x scripts/*.sh
+          scripts/dist.sh "${{ matrix.name }}" "${{ matrix.goos }}" "${{ matrix.debarch || '' }}"
+
+      - name: Remove teacher binary (student-only target)
+        if: matrix.studentonly == '1'
+        shell: bash
+        run: rm -f dist/*/bin/teacher dist/*/bin/teacher.exe
+
+      - name: macOS ad-hoc sign
+        if: runner.os == 'macOS'
+        run: |
+          for app in dist/*/TianYan-*.app; do
+            codesign --force -s - "$app" || true
+          done
+
+      - name: Pack tar.gz
         shell: bash
         run: |
-          go build -o teacher ./cmd/teacher
-          go build -o student ./cmd/student
-          mkdir -p pkg
-          if [ -f teacher.exe ]; then
-            cp teacher.exe pkg/tianyan-teacher-${{ matrix.name }}.exe
-            cp student.exe pkg/tianyan-student-${{ matrix.name }}.exe
-          else
-            cp teacher pkg/tianyan-teacher-${{ matrix.name }}
-            cp student pkg/tianyan-student-${{ matrix.name }}
+          cd dist
+          tar czf "tianyan-${{ matrix.name }}.tar.gz" "${{ matrix.name }}"
+
+      - name: Pack Windows zip
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "dist/${{ matrix.name }}" -DestinationPath "dist/tianyan-${{ matrix.name }}.zip"
+
+      - name: Build deb (UOS / Kylin / Linux)
+        if: matrix.deb == '1'
+        shell: bash
+        run: |
+          scripts/make-deb.sh "${{ matrix.name }}" "${{ matrix.debarch }}"
+          if [ "${{ matrix.tag }}" = "kylin" ]; then
+            mv dist/tianyan-student_*_${{ matrix.debarch }}.deb \
+               dist/tianyan-student-kylin_${VERSION#v}_${{ matrix.debarch }}.deb
           fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pkg-${{ matrix.name }}
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.deb
+          if-no-files-found: error
+          retention-days: 3
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Collect packages
+        shell: bash
+        run: |
+          mkdir -p release
+          find artifacts -name "*.tar.gz" -o -name "*.zip" -o -name "*.deb" | while read f; do
+            cp "$f" release/
+          done
+          ls -la release/
+
       - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: pkg/*
+          files: release/*
           generate_release_notes: true

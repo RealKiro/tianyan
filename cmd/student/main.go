@@ -9,15 +9,19 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"os/signal"
 	"strings"
+	"sync"
 	"time"
 
 	"tianyan/internal/block"
 	"tianyan/internal/config"
+	"tianyan/internal/dock"
 	"tianyan/internal/guardian"
 	"tianyan/internal/password"
 	"tianyan/internal/student"
+	"tianyan/internal/tray"
 )
 
 func main() {
@@ -29,19 +33,65 @@ func main() {
 	setPassword := flag.Bool("set-password", false, "设置卸载密码")
 	uninstall := flag.Bool("uninstall", false, "卸载（需要密码）")
 	pass := flag.String("pass", "", "密码（配合 -set-password / -uninstall）")
+	serviceCmd := flag.String("service", "", "服务模式：install | uninstall | run")
+	install := flag.Bool("install", false, "安装：注册开机自动启动的计划任务（需管理员运行一次）")
+	background := flag.Bool("background", false, "内部参数：由开机计划任务启动时隐藏控制台窗口")
 
 	// Normal student mode.
 	cfg := student.DefaultConfig()
+	noToolbar := flag.Bool("no-toolbar", false, "隐藏屏幕顶部的灵动岛工具栏")
+	noTray := flag.Bool("no-tray", false, "隐藏系统托盘常驻图标")
 	flag.StringVar(&cfg.Name, "name", cfg.Name, "学生机显示名称")
 	flag.StringVar(&cfg.StudentID, "id", "", "学生编号")
 	flag.StringVar(&cfg.Group, "group", "", "分组名称")
 	flag.StringVar(&cfg.TeacherIP, "teacher", "", "教师机 IP（留空则自动发现）")
 	flag.IntVar(&cfg.ServerPort, "port", cfg.ServerPort, "教师机控制 TCP 端口")
 	flag.StringVar(&cfg.DataDir, "data", cfg.DataDir, "数据/接收文件目录")
+	flag.StringVar(&cfg.AuthKey, "key", "", "共享认证密钥（留空则不认证）")
+	flag.IntVar(&cfg.VNCPort, "vnc-port", cfg.VNCPort, "VNC(RFB) 服务端口（0=关闭）")
 	flag.BoolVar(&cfg.AutoMute, "auto-mute", cfg.AutoMute, "教师机上线后自动静音")
-	flag.BoolVar(&cfg.RebootOnOffline, "reboot-on-offline", false, "检测到断网后倒计时重启（默认关闭）")
-	flag.DurationVar(&cfg.OfflineTimeout, "offline-timeout", cfg.OfflineTimeout, "断网判定超时")
+	flag.BoolVar(&cfg.RebootOnOffline, "reboot-on-offline", false, "检测到与教师失联后倒计时重启（默认关闭）")
+	flag.DurationVar(&cfg.OfflineTimeout, "offline-timeout", cfg.OfflineTimeout, "断联判定超时")
+	flag.BoolVar(&cfg.NetDownReboot, "netdown-reboot", cfg.NetDownReboot, "检测到网线断开（物理链路断）时自动锁屏并倒计时重启")
+	flag.DurationVar(&cfg.NetDownTimeout, "netdown-timeout", cfg.NetDownTimeout, "网线断开判定时长")
 	flag.Parse()
+
+	// 计划任务以 -background 启动学生端：转入无控制台窗口的后台进程。
+	if *background {
+		if err := spawnHidden(backgroundArgs(os.Args[1:])); err != nil {
+			log.Fatalf("background: %v", err)
+		}
+		return
+	}
+
+	switch *serviceCmd {
+	case "install":
+		if err := serviceInstall(); err != nil {
+			log.Fatal(err)
+		}
+		log.Println("服务已安装（开机自启）")
+		return
+	case "uninstall":
+		if err := serviceUninstall(); err != nil {
+			log.Fatal(err)
+		}
+		log.Println("服务已卸载")
+		return
+	case "run":
+		if err := runService(cfg); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
+
+	// 安装：注册开机自动启动的计划任务（用户登录时以最高权限后台运行）。
+	if *install {
+		if err := installAutostart(); err != nil {
+			log.Fatalf("install: %v（请以管理员身份运行安装命令）", err)
+		}
+		log.Println("安装完成：学生端将随开机自动在后台运行（计划任务 TianYanStudent）")
+		return
+	}
 
 	// 守护模式：看护学生进程，退出后自动重启，必要时重启系统。
 	if *guard {
@@ -104,9 +154,12 @@ func main() {
 		if err := block.RestoreHosts(); err != nil {
 			log.Printf("恢复 hosts 失败: %v", err)
 		}
+		if err := uninstallAutostart(); err != nil {
+			log.Printf("移除开机自启计划任务失败（可能未安装）: %v", err)
+		}
 		_ = os.Remove(config.Path())
 		_ = os.Remove(config.StopPath())
-		log.Println("卸载完成：已停止守护、恢复 hosts 并删除配置")
+		log.Println("卸载完成：已停止守护、移除开机自启、恢复 hosts 并删除配置")
 		return
 	}
 
@@ -137,12 +190,133 @@ func main() {
 
 	log.Printf("天眼学生端 v%s 启动（小工具栏 http://127.0.0.1:5600）", student.Version)
 
+	bar := startStudentBar(c, *noToolbar)
+	startTrayIcon(c, bar, *noTray)
+
 	go c.Run()
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt)
 	<-sig
 	log.Println("student: shutting down")
 	c.Close()
+}
+
+// startStudentBar shows the Dynamic-Island-style floating toolbar at the
+// top of the desktop (极域 style). It hides itself while a broadcast or
+// lock screen covers the desktop, and reappears afterwards.
+func startStudentBar(c *student.Client, disabled bool) *dock.Bar {
+	if disabled || !dock.Supported() {
+		return nil
+	}
+	var (
+		mu       sync.Mutex
+		demoing  bool
+		overlay  bool
+		hiddenBy bool
+	)
+	applyVisibility := func(bar *dock.Bar) {
+		mu.Lock()
+		hide := demoing || overlay
+		mu.Unlock()
+		if hide != hiddenBy {
+			hiddenBy = hide
+			if hide {
+				bar.Hide()
+			} else {
+				bar.Show()
+			}
+		}
+	}
+	bar, err := dock.NewBar(dock.Options{
+		Title: "天眼学生端",
+		Buttons: []dock.Button{
+			{ID: 1, Label: "举手"},
+			{ID: 2, Label: "消息"},
+			{ID: 3, Label: "作业"},
+			{ID: 4, Label: "广播"},
+		},
+		OnClick: func(id int) {
+			switch id {
+			case 1:
+				c.ToggleRaiseHand()
+			case 2, 3:
+				openURL("http://127.0.0.1:5600")
+			case 4:
+				c.RequestBroadcast()
+			}
+		},
+	})
+	if err != nil {
+		log.Printf("student: toolbar bar: %v", err)
+		return nil
+	}
+	c.OnUpdate = func() { bar.SetLabel(c.StatusLine()) }
+	c.OnDemoing = func(active bool) {
+		mu.Lock()
+		demoing = active
+		mu.Unlock()
+		applyVisibility(bar)
+		bar.SetLabel(c.StatusLine())
+	}
+	c.OnOverlay = func(on bool) {
+		mu.Lock()
+		overlay = on
+		mu.Unlock()
+		applyVisibility(bar)
+	}
+	// Periodic refresh keeps connection state honest without events.
+	go func() {
+		t := time.NewTicker(2 * time.Second)
+		defer t.Stop()
+		for range t.C {
+			bar.SetLabel(c.StatusLine())
+		}
+	}()
+	bar.SetLabel(c.StatusLine())
+	return bar
+}
+
+// startTrayIcon shows the resident tray icon (冰点还原 style): students
+// cannot operate it; Shift+double-click asks for the admin password before
+// opening the local settings page. The icon turns gray while the client is
+// disconnected from the teacher, and the island toolbar buttons gray out
+// with it.
+func startTrayIcon(c *student.Client, bar *dock.Bar, disabled bool) {
+	if disabled || !tray.Supported() {
+		return
+	}
+	stored, _ := config.Load()
+	icon, err := tray.New(tray.Options{
+		Tooltip: "天眼学生端",
+		Verify: func(pass string) bool {
+			if stored.Password.Hash == "" {
+				dock.MessageBox("天眼 · 客户端管理", "尚未设置管理密码。\n请先运行：student -set-password")
+				return false
+			}
+			if !password.Verify(pass, stored.Password) {
+				dock.MessageBox("天眼 · 客户端管理", "密码错误。")
+				return false
+			}
+			return true
+		},
+		OnUnlock: func() { openURL("http://127.0.0.1:5600") },
+	})
+	if err != nil {
+		log.Printf("student: tray icon: %v", err)
+		return
+	}
+	c.OnConnState = func(online bool) {
+		icon.SetGray(!online)
+		for id := 1; id <= 4; id++ {
+			bar.SetEnabled(id, online)
+		}
+		bar.SetLabel(c.StatusLine())
+	}
+}
+
+// openURL opens the default browser (local toolbar pages).
+func openURL(url string) {
+	_ = exec.Command("cmd", "/C", "start", "", url).Start()
 }
 
 // restartArgs removes guardian-only flags so the restart does not spawn a
@@ -178,4 +352,50 @@ func promptPassword(msg string) string {
 		return ""
 	}
 	return strings.TrimSpace(line)
+}
+
+// autostartTaskName is the scheduled task that relaunches the client at
+// every user sign-in (registered by -install).
+const autostartTaskName = "TianYanStudent"
+
+// installAutostart registers a logon scheduled task so the installed client
+// auto-runs in the background after every boot/sign-in — elevated (HIGHEST)
+// so hosts-based website blocking and the exemption release work, and in
+// the user session so screen capture, input control and the docked toolbar
+// all operate on the interactive desktop.
+func installAutostart() error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	args := installArgs(os.Args[1:])
+	cmdLine := `"` + exe + `"` + " " + strings.Join(args, " ") + " -background"
+	return exec.Command("schtasks", "/Create", "/F", "/TN", autostartTaskName,
+		"/TR", cmdLine, "/SC", "ONLOGON", "/RL", "HIGHEST").Run()
+}
+
+func uninstallAutostart() error {
+	return exec.Command("schtasks", "/Delete", "/F", "/TN", autostartTaskName).Run()
+}
+
+// installArgs strips installer-only flags; everything else (name, teacher,
+// daemon protection, deny rules...) carries into the autostart command.
+func installArgs(args []string) []string {
+	return filterFlag(args, "-install")
+}
+
+// backgroundArgs strips the internal -background flag before re-spawning.
+func backgroundArgs(args []string) []string {
+	return filterFlag(args, "-background")
+}
+
+func filterFlag(args []string, flagName string) []string {
+	out := make([]string, 0, len(args))
+	for _, a := range args {
+		if a == flagName || a == flagName+"=true" || a == flagName+"=false" {
+			continue
+		}
+		out = append(out, a)
+	}
+	return out
 }

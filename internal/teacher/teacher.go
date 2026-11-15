@@ -14,13 +14,17 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/gorilla/websocket"
 
+	"tianyan/internal/auth"
+	"tianyan/internal/capture"
 	"tianyan/internal/discovery"
 	"tianyan/internal/protocol"
 	"tianyan/internal/transfer"
@@ -34,6 +38,9 @@ func DefaultConfig() Config {
 		ControlPort: 5555,
 		HTTPAddr:    ":8080",
 		DataDir:     filepath.Join(os.TempDir(), "tianyan-teacher"),
+		DemoFPS:     8,
+		DemoWidth:   1600,
+		DemoQuality: 60,
 	}
 }
 
@@ -43,6 +50,10 @@ type Config struct {
 	ControlPort int
 	HTTPAddr    string
 	DataDir     string
+	AuthKey     string // shared auth key (empty = no auth)
+	DemoFPS     int    // broadcast frame rate (teacher screen source)
+	DemoWidth   int    // broadcast frame max width, 0 = native resolution
+	DemoQuality int    // broadcast JPEG quality 1..100
 }
 
 // Server is the teacher server.
@@ -53,6 +64,21 @@ type Server struct {
 	students map[string]*Student
 	hub      *hub
 	recv     *transfer.Receiver
+
+	demo    demoState
+	pending []string // student ids with an unanswered broadcast request
+
+	lastFullscreen bool // remembered demo mode for the docked-bar broadcast toggle
+}
+
+// demoState tracks the current screen broadcast (Veyon's demo feature):
+// source "" = the teacher's own screen, or a student id being relayed.
+type demoState struct {
+	mu         sync.Mutex
+	active     bool
+	source     string
+	fullscreen bool
+	stopCh     chan struct{}
 }
 
 // Student is a registered student machine.
@@ -68,6 +94,8 @@ type Student struct {
 	blacked     bool
 	locked      bool
 	raising     bool
+	demoing     bool
+	exempt      bool // rule enforcement paused (reward for finished work)
 }
 
 type hub struct {
@@ -153,6 +181,7 @@ func (s *Server) onAnnounce(a protocol.Announce, _ *net.UDPAddr) {
 		IP:        a.IP,
 		MAC:       a.MAC,
 		OS:        a.OS,
+		User:      a.User,
 		StudentID: a.StudentID,
 		Group:     a.Group,
 	}
@@ -171,6 +200,9 @@ func (s *Server) onAnnounce(a protocol.Announce, _ *net.UDPAddr) {
 		}
 		if h.MAC != "" {
 			st.info.MAC = h.MAC
+		}
+		if h.User != "" {
+			st.info.User = h.User
 		}
 		st.lastSeen = time.Now()
 	}
@@ -191,7 +223,13 @@ func (s *Server) acceptLoop(ln net.Listener) {
 func (s *Server) handleStudent(conn net.Conn) {
 	defer conn.Close()
 	var id string
+	var expectedNonce string
+	var authDeadline *time.Timer
+	authenticated := s.cfg.AuthKey == ""
 	defer func() {
+		if authDeadline != nil {
+			authDeadline.Stop()
+		}
 		if id != "" {
 			s.markOffline(id)
 		}
@@ -213,9 +251,38 @@ func (s *Server) handleStudent(conn net.Conn) {
 				var h protocol.Hello
 				_ = json.Unmarshal(msg.Data, &h)
 				id = s.registerStudent(h, conn)
+				if s.cfg.AuthKey != "" && !authenticated {
+					expectedNonce = auth.Nonce()
+					s.sendToStudent(id, protocol.NewMessage("auth_challenge", protocol.Auth{Nonce: expectedNonce}))
+					authDeadline = time.AfterFunc(5*time.Second, func() { _ = conn.Close() })
+				}
+
+			case "auth_challenge":
+				var a protocol.Auth
+				_ = json.Unmarshal(msg.Data, &a)
+				if id != "" {
+					s.sendToStudent(id, protocol.NewMessage("auth_response", protocol.Auth{Token: auth.Token(s.cfg.AuthKey, a.Nonce)}))
+				}
+
+			case "auth_response":
+				var a protocol.Auth
+				_ = json.Unmarshal(msg.Data, &a)
+				if s.cfg.AuthKey != "" && !authenticated && auth.Verify(s.cfg.AuthKey, expectedNonce, a.Token) {
+					authenticated = true
+					if authDeadline != nil {
+						authDeadline.Stop()
+						authDeadline = nil
+					}
+					s.sendPendingDemo(id) // catch up with an ongoing broadcast
+				}
 			case "status":
 				if id != "" {
-					s.updateStatus(id, payload)
+					s.updateStatus(id, msg.Data)
+				}
+			case "ack":
+				var a protocol.Ack
+				if id != "" && json.Unmarshal(msg.Data, &a) == nil && !a.OK && a.Error != "" {
+					s.hub.broadcast(eventMsg("error", id, s.studentName(id), a.Error))
 				}
 			case "raise_hand":
 				if id != "" {
@@ -227,6 +294,10 @@ func (s *Server) handleStudent(conn net.Conn) {
 					}
 					s.mu.Unlock()
 					s.pushRoster()
+				}
+			case "broadcast_request":
+				if id != "" {
+					s.handleBroadcastRequest(id)
 				}
 			case "chat":
 				if id != "" {
@@ -249,8 +320,18 @@ func (s *Server) handleStudent(conn net.Conn) {
 			s.mu.Unlock()
 			if mode == protocol.ImageThumb {
 				s.hub.broadcast(frameMsg(id, "thumb", jpg))
-			} else {
+			} else if mode == protocol.ImageFull {
 				s.hub.broadcastFull(id, frameMsg(id, "full", jpg))
+				// Student relay: while this student is the demo source,
+				// re-broadcast its full frames to everyone else.
+				s.demo.mu.Lock()
+				relay := s.demo.active && s.demo.source == id
+				s.demo.mu.Unlock()
+				if relay {
+					s.fanoutDemo(jpg, id)
+				}
+			} else if mode == protocol.ImageShot {
+				s.saveScreenshot(id, jpg)
 			}
 
 		case protocol.FrameFile:
@@ -278,15 +359,50 @@ func (s *Server) registerStudent(h protocol.Hello, conn net.Conn) string {
 	st.conn = conn
 	st.lastSeen = time.Now()
 	s.mu.Unlock()
+	if s.cfg.AuthKey == "" {
+		s.sendPendingDemo(id) // catch up with an ongoing broadcast
+	}
 	s.pushRoster()
 	return id
 }
 
 func (s *Server) markOffline(id string) {
+	wasSource := false
 	s.mu.Lock()
 	if st := s.students[id]; st != nil {
 		st.conn = nil
 		st.fullViewers = 0
+		st.demoing = false
+	}
+	s.demo.mu.Lock() // lock order: s.mu -> demo.mu everywhere
+	if s.demo.active && s.demo.source == id {
+		wasSource = true
+	}
+	s.demo.mu.Unlock()
+	s.mu.Unlock()
+	if wasSource {
+		log.Printf("teacher: demo source %s went offline; stopping broadcast", id)
+		s.stopDemo()
+		return
+	}
+	s.dropPending(id)
+	s.pushRoster()
+}
+
+// sendPendingDemo brings a freshly connected (and, with auth, just
+// verified) student into an ongoing broadcast.
+func (s *Server) sendPendingDemo(id string) {
+	s.demo.mu.Lock()
+	active, fullscreen, source := s.demo.active, s.demo.fullscreen, s.demo.source
+	s.demo.mu.Unlock()
+	if !active || id == source || id == "" {
+		return
+	}
+	s.sendToStudent(id, protocol.NewMessage("demo", protocol.Demo{On: true, Fullscreen: fullscreen}))
+	s.sendToStudent(id, protocol.NewMessage("view", protocol.View{Mode: "off"}))
+	s.mu.Lock()
+	if st := s.students[id]; st != nil {
+		st.demoing = true
 	}
 	s.mu.Unlock()
 	s.pushRoster()
@@ -303,6 +419,10 @@ func (s *Server) updateStatus(id string, payload []byte) {
 		x.volume = st.Volume
 		x.blacked = st.Blacked
 		x.locked = st.Locked
+		x.exempt = st.Exempt
+		// NOTE: demoing is intentionally NOT taken from the student here —
+		// the teacher is the single source of truth for broadcast state, and
+		// stale periodic status reports would overwrite a just-started demo.
 		x.lastSeen = time.Now()
 	}
 	s.mu.Unlock()
@@ -332,11 +452,19 @@ type command struct {
 	Volume    *protocol.Volume    `json:"volume,omitempty"`
 	Black     *protocol.Black     `json:"black,omitempty"`
 	LockInput *protocol.LockInput `json:"lock_input,omitempty"`
-	Open      *protocol.Open      `json:"open,omitempty"`
-	Close     *protocol.Close     `json:"close,omitempty"`
-	Power     *protocol.Power     `json:"power,omitempty"`
-	BlockList *protocol.BlockList `json:"blocklist,omitempty"`
-	Chat      *struct {
+	Demo      *struct {
+		On         bool   `json:"on"`
+		Fullscreen bool   `json:"fullscreen"`
+		Source     string `json:"source"` // "" / "teacher" = teacher screen, else student id
+	} `json:"demo,omitempty"`
+	Screenshot  *struct{}             `json:"screenshot,omitempty"`
+	LockScreen  *protocol.LockScreen  `json:"lockscreen,omitempty"`
+	Open        *protocol.Open        `json:"open,omitempty"`
+	Close       *protocol.Close       `json:"close,omitempty"`
+	Power       *protocol.Power       `json:"power,omitempty"`
+	BlockList   *protocol.BlockList   `json:"blocklist,omitempty"`
+	BlockExempt *protocol.BlockExempt `json:"block_exempt,omitempty"`
+	Chat        *struct {
 		Text string `json:"text"`
 	} `json:"chat,omitempty"`
 }
@@ -344,6 +472,29 @@ type command struct {
 func (s *Server) dispatchCommand(ids []string, raw json.RawMessage) {
 	var cmd command
 	if json.Unmarshal(raw, &cmd) != nil {
+		return
+	}
+	// The broadcast is a global mode, not a per-student command: it targets
+	// every online student regardless of the selection.
+	if cmd.Demo != nil {
+		if cmd.Demo.On {
+			source := cmd.Demo.Source
+			if source == "teacher" {
+				source = ""
+			}
+			if source != "" {
+				s.mu.Lock()
+				st := s.students[source]
+				s.mu.Unlock()
+				if st == nil || st.conn == nil {
+					s.hub.broadcast(eventMsg("error", "", "教师", "广播源学生不在线，无法开始转播"))
+					return
+				}
+			}
+			s.startDemo(source, cmd.Demo.Fullscreen)
+		} else {
+			s.stopDemo()
+		}
 		return
 	}
 	var msg protocol.Message
@@ -356,6 +507,8 @@ func (s *Server) dispatchCommand(ids []string, raw json.RawMessage) {
 		msg = protocol.NewMessage("black", *cmd.Black)
 	case cmd.LockInput != nil:
 		msg = protocol.NewMessage("lock_input", *cmd.LockInput)
+	case cmd.Screenshot != nil:
+		msg = protocol.NewMessage("screenshot", struct{}{})
 	case cmd.Open != nil:
 		msg = protocol.NewMessage("open", *cmd.Open)
 	case cmd.Close != nil:
@@ -364,6 +517,10 @@ func (s *Server) dispatchCommand(ids []string, raw json.RawMessage) {
 		msg = protocol.NewMessage("power", *cmd.Power)
 	case cmd.BlockList != nil:
 		msg = protocol.NewMessage("blocklist", *cmd.BlockList)
+	case cmd.BlockExempt != nil:
+		msg = protocol.NewMessage("block_exempt", *cmd.BlockExempt)
+	case cmd.LockScreen != nil:
+		msg = protocol.NewMessage("lockscreen", *cmd.LockScreen)
 	case cmd.Chat != nil:
 		msg = protocol.NewMessage("chat", protocol.Chat{From: "教师", Text: cmd.Chat.Text})
 	default:
@@ -417,6 +574,423 @@ func (s *Server) sendToStudent(id string, msg protocol.Message) {
 
 func (s *Server) sendInput(id string, in protocol.Input) {
 	s.sendToStudent(id, protocol.NewMessage("input", in))
+}
+
+// ---- screen broadcast (demo) ----
+
+// startDemo begins a broadcast. source "" streams the teacher's own screen;
+// a student id relays that student's screen to everyone else. Fullscreen
+// mode also locks student input on the receiving machines.
+func (s *Server) startDemo(source string, fullscreen bool) {
+	s.stopDemo() // switching source/mode: tear down any current broadcast
+	s.lastFullscreen = fullscreen
+
+	s.demo.mu.Lock()
+	s.demo.active = true
+	s.demo.source = source
+	s.demo.fullscreen = fullscreen
+	stopCh := make(chan struct{})
+	s.demo.stopCh = stopCh
+	s.demo.mu.Unlock()
+
+	ids := s.onlineStudentIDs()
+	for _, id := range ids {
+		if id != source {
+			s.sendToStudent(id, protocol.NewMessage("demo", protocol.Demo{On: true, Fullscreen: fullscreen}))
+		}
+	}
+	// Pause thumbnail streaming while broadcasting (Veyon's
+	// SlowDownThumbnailUpdates) to keep LAN bandwidth for demo frames.
+	for _, id := range ids {
+		s.sendToStudent(id, protocol.NewMessage("view", protocol.View{Mode: "off"}))
+	}
+	if source != "" {
+		// Student relay: make the source push full frames, which are then
+		// fanned out to the rest of the class from the ImageFull handler.
+		s.sendToStudent(source, protocol.NewMessage("view", protocol.View{Mode: "full"}))
+	} else {
+		go s.teacherCaptureLoop(stopCh)
+	}
+	s.mu.Lock()
+	for id, st := range s.students {
+		st.demoing = st.conn != nil && id != source
+	}
+	s.mu.Unlock()
+	s.pushRoster()
+	s.pushDemoStatus()
+}
+
+// stopDemo tears down the current broadcast, if any, and restores the
+// normal thumbnail monitoring mode.
+func (s *Server) stopDemo() {
+	s.demo.mu.Lock()
+	wasActive := s.demo.active
+	stopCh := s.demo.stopCh
+	source := s.demo.source
+	s.demo.active = false
+	s.demo.source = ""
+	s.demo.stopCh = nil
+	s.demo.mu.Unlock()
+	if stopCh != nil {
+		close(stopCh)
+	}
+	if !wasActive {
+		return
+	}
+	if source != "" {
+		// The student who was sharing its screen resets its toolbar state.
+		s.sendToStudent(source, protocol.NewMessage("broadcast_result",
+			protocol.BroadcastResult{Approved: false, Reason: "教师已结束广播"}))
+	}
+	for _, id := range s.onlineStudentIDs() {
+		s.sendToStudent(id, protocol.NewMessage("demo", protocol.Demo{On: false}))
+		s.sendToStudent(id, protocol.NewMessage("view", protocol.View{Mode: "thumb"}))
+	}
+	s.mu.Lock()
+	for _, st := range s.students {
+		st.demoing = false
+	}
+	s.mu.Unlock()
+	s.pushRoster()
+	s.pushDemoStatus()
+}
+
+// teacherCaptureLoop grabs the teacher's screen and fans frames out until
+// the broadcast is stopped.
+func (s *Server) teacherCaptureLoop(stopCh <-chan struct{}) {
+	cap := capture.New()
+	fps := s.cfg.DemoFPS
+	if fps <= 0 || fps > 30 {
+		fps = 8
+	}
+	t := time.NewTicker(time.Second / time.Duration(fps))
+	defer t.Stop()
+	for {
+		select {
+		case <-stopCh:
+			return
+		case <-t.C:
+		}
+		if len(s.onlineStudentIDs()) == 0 {
+			continue // nobody watching: skip the capture work
+		}
+		fr, err := cap.Capture(s.cfg.DemoWidth, s.cfg.DemoQuality)
+		if err != nil {
+			log.Printf("teacher: demo capture: %v", err)
+			continue
+		}
+		s.fanoutDemo(fr.JPEG, "")
+	}
+}
+
+// fanoutDemo sends one demo frame to every online student except exclude
+// (the relay source). Each write runs on its own goroutine with a deadline
+// so a slow student cannot stall the rest of the class.
+func (s *Server) fanoutDemo(jpg []byte, exclude string) {
+	payload := make([]byte, 1, len(jpg)+1)
+	payload[0] = protocol.ImageDemo
+	payload = append(payload, jpg...)
+	for _, st := range s.demoTargets(exclude) {
+		go s.writeDemoFrame(st, payload)
+	}
+}
+
+// demoTargets snapshots the online students eligible for demo frames.
+func (s *Server) demoTargets(exclude string) []*Student {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	targets := make([]*Student, 0, len(s.students))
+	for id, st := range s.students {
+		if id != exclude && st.conn != nil {
+			targets = append(targets, st)
+		}
+	}
+	return targets
+}
+
+func (s *Server) writeDemoFrame(st *Student, payload []byte) {
+	st.writeMu.Lock()
+	defer st.writeMu.Unlock()
+	s.mu.Lock()
+	conn := st.conn
+	s.mu.Unlock()
+	if conn == nil {
+		return
+	}
+	_ = conn.SetWriteDeadline(time.Now().Add(time.Second))
+	_ = protocol.WriteFrame(conn, protocol.FrameImage, payload)
+}
+
+// saveScreenshot stores a full-quality frame from a student on disk and
+// reports the path to the console.
+func (s *Server) saveScreenshot(id string, jpg []byte) {
+	dir := filepath.Join(s.cfg.DataDir, "screenshots")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		log.Printf("teacher: screenshots dir: %v", err)
+		return
+	}
+	name := s.studentName(id)
+	path := filepath.Join(dir, sanitizeFilename(name)+"-"+time.Now().Format("20060102-150405")+".jpg")
+	if err := os.WriteFile(path, jpg, 0644); err != nil {
+		log.Printf("teacher: screenshot save: %v", err)
+		s.hub.broadcast(eventMsg("error", id, name, "截图保存失败："+err.Error()))
+		return
+	}
+	s.hub.broadcast(eventMsg("screenshot", id, name, path))
+}
+
+// sanitizeFilename maps a student name to a safe file name, replacing
+// separators with dashes (same spirit as Veyon's screenshot naming).
+func sanitizeFilename(name string) string {
+	var b strings.Builder
+	for _, r := range name {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(r)
+		} else {
+			b.WriteRune('-')
+		}
+	}
+	out := strings.Trim(b.String(), "-")
+	if out == "" {
+		out = "student"
+	}
+	return out
+}
+
+func (s *Server) onlineStudentIDs() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ids := make([]string, 0, len(s.students))
+	for id, st := range s.students {
+		if st.conn != nil {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+// pushDemoStatus reports the broadcast mode to the console.
+func (s *Server) pushDemoStatus() {
+	s.demo.mu.Lock()
+	active, source, fullscreen := s.demo.active, s.demo.source, s.demo.fullscreen
+	s.demo.mu.Unlock()
+	name := "教师屏幕"
+	if source != "" {
+		name = s.studentName(source)
+	}
+	raw, _ := json.Marshal(map[string]any{
+		"type": "demo", "active": active,
+		"fullscreen": fullscreen, "source": source, "source_name": name,
+	})
+	s.hub.broadcast(raw)
+}
+
+// ---- student broadcast approval (学生请求广播自己的屏幕) ----
+
+// handleBroadcastRequest queues a student's request to share its screen and
+// notifies the console. The teacher must approve before any broadcast of a
+// student screen starts.
+func (s *Server) handleBroadcastRequest(id string) {
+	s.demo.mu.Lock()
+	busy := s.demo.active
+	s.demo.mu.Unlock()
+	if busy {
+		s.sendToStudent(id, protocol.NewMessage("broadcast_result",
+			protocol.BroadcastResult{Approved: false, Reason: "已有广播进行中，请稍后再试"}))
+		return
+	}
+	name := s.studentName(id)
+	changed := false
+	s.mu.Lock()
+	for _, p := range s.pending {
+		if p == id {
+			changed = true // already queued; re-notify the console anyway
+			break
+		}
+	}
+	if !changed {
+		s.pending = append(s.pending, id)
+	}
+	s.mu.Unlock()
+	s.hub.broadcast(eventMsg("broadcast", id, name, "请求广播自己的屏幕，等待教师批准"))
+	s.pushBroadcastReqs()
+}
+
+// replyBroadcast applies the teacher's decision from the console/dock bar.
+func (s *Server) replyBroadcast(id string, approved bool, fullscreen bool) {
+	s.mu.Lock()
+	out := s.pending[:0]
+	for _, p := range s.pending {
+		if p != id {
+			out = append(out, p)
+		}
+	}
+	s.pending = out
+	s.mu.Unlock()
+	s.pushBroadcastReqs()
+	if !approved {
+		s.sendToStudent(id, protocol.NewMessage("broadcast_result",
+			protocol.BroadcastResult{Approved: false, Reason: "教师已拒绝广播请求"}))
+		return
+	}
+	if st := s.studentConn(id); st == nil {
+		s.sendToStudent(id, protocol.NewMessage("broadcast_result",
+			protocol.BroadcastResult{Approved: false, Reason: "学生已离线"}))
+		s.hub.broadcast(eventMsg("error", "", "教师", "广播审批目标已离线"))
+		return
+	}
+	s.sendToStudent(id, protocol.NewMessage("broadcast_result",
+		protocol.BroadcastResult{Approved: true}))
+	s.startDemo(id, fullscreen)
+}
+
+// pushBroadcastReqs sends the current pending list to the console.
+func (s *Server) pushBroadcastReqs() {
+	s.mu.Lock()
+	ids := append([]string(nil), s.pending...)
+	s.mu.Unlock()
+	type reqEntry struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+		IP   string `json:"ip"`
+	}
+	reqs := make([]reqEntry, 0, len(ids))
+	for _, id := range ids {
+		s.mu.Lock()
+		st := s.students[id]
+		var name, ip string
+		if st != nil {
+			name, ip = st.info.Name, st.info.IP
+		}
+		s.mu.Unlock()
+		if st == nil || st.conn == nil {
+			continue // vanished student drops out of the list
+		}
+		if name == "" {
+			name = id
+		}
+		reqs = append(reqs, reqEntry{ID: id, Name: name, IP: ip})
+	}
+	raw, _ := json.Marshal(map[string]any{"type": "broadcast_req", "reqs": reqs})
+	s.hub.broadcast(raw)
+}
+
+// dropPending removes a student from the pending list (on disconnect).
+func (s *Server) dropPending(id string) {
+	s.mu.Lock()
+	out := s.pending[:0]
+	for _, p := range s.pending {
+		if p != id {
+			out = append(out, p)
+		}
+	}
+	changed := len(out) != len(s.pending)
+	s.pending = out
+	s.mu.Unlock()
+	if changed {
+		s.pushBroadcastReqs()
+	}
+}
+
+// ---- docked-bar quick actions ----
+
+// QuickStatus returns the one-line status shown on the teacher dock bar.
+func (s *Server) QuickStatus() string {
+	online, total, raising, blacked := 0, 0, 0, 0
+	s.mu.Lock()
+	for _, st := range s.students {
+		total++
+		if st.conn != nil {
+			online++
+		}
+		if st.raising {
+			raising++
+		}
+		if st.blacked {
+			blacked++
+		}
+	}
+	nPending := len(s.pending)
+	s.mu.Unlock()
+	line := fmt.Sprintf("在线 %d/%d", online, total)
+	if raising > 0 {
+		line += fmt.Sprintf(" · %d 人举手", raising)
+	}
+	if blacked > 0 {
+		line += fmt.Sprintf(" · %d 台锁屏", blacked)
+	}
+	if nPending > 0 {
+		line += fmt.Sprintf(" · %d 个广播请求待审批", nPending)
+	}
+	return line
+}
+
+// QuickCommand performs a docked-bar action. It applies to all online
+// students; toggles read the current state first.
+func (s *Server) QuickCommand(action string) {
+	switch action {
+	case "console":
+		url := s.cfg.HTTPAddr
+		if url == "" || url[0] == ':' {
+			url = "http://localhost" + url
+		}
+		_ = exec.Command("cmd", "/C", "start", "", url).Start()
+	case "broadcast":
+		s.demo.mu.Lock()
+		active := s.demo.active
+		s.demo.mu.Unlock()
+		if active {
+			s.stopDemo()
+			return
+		}
+		s.startDemo("", s.lastFullscreen)
+	case "black", "lock", "lockscreen":
+		// Merged lock-screen toggle: if any online student is locked up,
+		// lift every lock; otherwise lock all screens with the default text.
+		if s.anyOnline(func(st *Student) bool { return st.blacked || st.locked }) {
+			s.broadcastToAll(protocol.NewMessage("lockscreen", protocol.LockScreen{On: false}))
+		} else {
+			s.broadcastToAll(protocol.NewMessage("lockscreen", protocol.LockScreen{On: true, Text: "请保持安静"}))
+		}
+	case "mute":
+		if s.anyOnline(func(st *Student) bool { return st.muted }) {
+			s.broadcastToAll(protocol.NewMessage("mute", protocol.Mute{On: false}))
+		} else {
+			s.broadcastToAll(protocol.NewMessage("mute", protocol.Mute{On: true}))
+		}
+	case "shot":
+		for _, id := range s.onlineStudentIDs() {
+			s.sendToStudent(id, protocol.NewMessage("screenshot", struct{}{}))
+		}
+	case "shutdown", "reboot":
+		msg := protocol.NewMessage("power", protocol.Power{Action: action, Delay: 0})
+		s.broadcastToAll(msg)
+	case "stop":
+		s.stopDemo()
+	}
+}
+
+// anyOnline reports whether the predicate holds for any online student.
+func (s *Server) anyOnline(pred func(*Student) bool) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, st := range s.students {
+		if st.conn != nil && pred(st) {
+			return true
+		}
+	}
+	return false
+}
+
+// studentConn returns a snapshot of the student record when online.
+func (s *Server) studentConn(id string) *Student {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st := s.students[id]
+	if st == nil || st.conn == nil {
+		return nil
+	}
+	return st
 }
 
 // ---- file transfer ----
@@ -477,12 +1051,14 @@ func (s *Server) uiReader(c *uiClient) {
 			return
 		}
 		var m struct {
-			Type  string          `json:"type"`
-			ID    string          `json:"id"`
-			Mode  string          `json:"mode"`
-			IDs   []string        `json:"ids"`
-			Cmd   json.RawMessage `json:"cmd"`
-			Input protocol.Input  `json:"input"`
+			Type       string          `json:"type"`
+			ID         string          `json:"id"`
+			Mode       string          `json:"mode"`
+			IDs        []string        `json:"ids"`
+			Cmd        json.RawMessage `json:"cmd"`
+			Input      protocol.Input  `json:"input"`
+			Approved   bool            `json:"approved"`
+			Fullscreen bool            `json:"fullscreen"`
 		}
 		if json.Unmarshal(data, &m) != nil {
 			continue
@@ -494,6 +1070,10 @@ func (s *Server) uiReader(c *uiClient) {
 			s.dispatchCommand(m.IDs, m.Cmd)
 		case "input":
 			s.sendInput(m.ID, m.Input)
+		case "broadcast_reply":
+			if m.ID != "" {
+				s.replyBroadcast(m.ID, m.Approved, m.Fullscreen)
+			}
 		}
 	}
 }
@@ -535,6 +1115,7 @@ type rosterEntry struct {
 	IP        string `json:"ip"`
 	MAC       string `json:"mac"`
 	OS        string `json:"os"`
+	User      string `json:"user,omitempty"`
 	Group     string `json:"group,omitempty"`
 	StudentID string `json:"student_id,omitempty"`
 	Online    bool   `json:"online"`
@@ -542,6 +1123,8 @@ type rosterEntry struct {
 	Volume    int    `json:"volume"`
 	Blacked   bool   `json:"blacked"`
 	Locked    bool   `json:"locked"`
+	Demoing   bool   `json:"demoing"`
+	Exempt    bool   `json:"exempt"`
 	Raising   bool   `json:"raising"`
 	Width     int    `json:"width"`
 	Height    int    `json:"height"`
@@ -559,6 +1142,7 @@ func (s *Server) buildRoster() []rosterEntry {
 			IP:        st.info.IP,
 			MAC:       st.info.MAC,
 			OS:        st.info.OS,
+			User:      st.info.User,
 			Group:     st.info.Group,
 			StudentID: st.info.StudentID,
 			Online:    st.conn != nil,
@@ -566,6 +1150,8 @@ func (s *Server) buildRoster() []rosterEntry {
 			Volume:    st.volume,
 			Blacked:   st.blacked,
 			Locked:    st.locked,
+			Demoing:   st.demoing,
+			Exempt:    st.exempt,
 			Raising:   st.raising,
 			Width:     st.info.Width,
 			Height:    st.info.Height,

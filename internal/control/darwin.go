@@ -63,8 +63,12 @@ func (c *darwinController) Volume() (int, error) {
 	return strconv.Atoi(strings.TrimSpace(string(out)))
 }
 
+func (c *darwinController) LockScreen(on bool, text, image string) error {
+	return fmt.Errorf("control: lock screen not yet implemented on macOS")
+}
+
 func (c *darwinController) BlackScreen(on bool, text string) error {
-	return fmt.Errorf("control: black screen not yet implemented on macOS")
+	return c.LockScreen(on, text, "")
 }
 
 func (c *darwinController) LockInput(on bool) error { return nil }

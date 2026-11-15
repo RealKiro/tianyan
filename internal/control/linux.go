@@ -77,12 +77,16 @@ func (c *linuxController) Volume() (int, error) {
 	return 0, fmt.Errorf("control: volume query not implemented on Linux")
 }
 
-func (c *linuxController) BlackScreen(on bool, text string) error {
+func (c *linuxController) LockScreen(on bool, text, image string) error {
 	state := "off"
 	if on {
 		state = "on"
 	}
 	return exec.Command("xset", "dpms", "force", state).Run()
+}
+
+func (c *linuxController) BlackScreen(on bool, text string) error {
+	return c.LockScreen(on, text, "")
 }
 
 func (c *linuxController) LockInput(on bool) error { return nil }

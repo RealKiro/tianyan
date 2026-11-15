@@ -191,7 +191,7 @@ func (a *windowsAudio) Close() {
 }
 
 const overlayScript = `
-param([string]$Text = '')
+param([string]$Text = '', [string]$Image = '')
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 $form = New-Object System.Windows.Forms.Form
@@ -205,6 +205,10 @@ $form.ForeColor = [System.Drawing.Color]::White
 $form.ControlBox = $false
 $form.ShowInTaskbar = $false
 $form.KeyPreview = $true
+if ($Image -ne '' -and (Test-Path $Image)) {
+  $form.BackgroundImage = [System.Drawing.Image]::FromFile($Image)
+  $form.BackgroundImageLayout = 'Stretch'
+}
 $label = New-Object System.Windows.Forms.Label
 $label.Text = $Text
 $label.ForeColor = [System.Drawing.Color]::White
@@ -226,9 +230,9 @@ type winController struct {
 
 	mu        sync.Mutex
 	overlay   *exec.Cmd
-	blackOn   bool
 	lockOn    bool
-	blackText string
+	lockText  string
+	lockImage string
 }
 
 // New returns the Windows controller.
@@ -330,36 +334,45 @@ func (c *winController) Volume() (int, error) {
 	return c.audio.GetVolume()
 }
 
-func (c *winController) BlackScreen(on bool, text string) error {
+// LockScreen shows/hides the merged lock overlay: a full-screen topmost
+// window with a custom message and/or wallpaper image that swallows
+// keyboard input and covers the desktop (input lock). Each "on" command
+// carries the full intent: an empty text falls back to the default message
+// and an empty image means a plain black background.
+func (c *winController) LockScreen(on bool, text, image string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.blackOn = on
-	if on && text != "" {
-		c.blackText = text
+	c.lockOn = on
+	if on {
+		c.lockText = text
+		c.lockImage = image
 	}
 	return c.syncOverlayLocked()
 }
 
+// BlackScreen is the legacy plain-black overlay (kept for compatibility).
+func (c *winController) BlackScreen(on bool, text string) error {
+	return c.LockScreen(on, text, "")
+}
+
+// LockInput is the legacy input-only lock (kept for compatibility).
 func (c *winController) LockInput(on bool) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.lockOn = on
-	return c.syncOverlayLocked()
+	return c.LockScreen(on, "输入已锁定，请保持安静", "")
 }
 
 func (c *winController) syncOverlayLocked() error {
-	if c.blackOn || c.lockOn {
-		text := c.blackText
-		if !c.blackOn {
-			text = "输入已锁定，请保持安静"
+	if c.lockOn {
+		text := c.lockText
+		if text == "" {
+			text = "请保持安静"
 		}
-		return c.ensureOverlay(text)
+		return c.ensureOverlay(text, c.lockImage)
 	}
 	c.stopOverlay()
 	return nil
 }
 
-func (c *winController) ensureOverlay(text string) error {
+func (c *winController) ensureOverlay(text, image string) error {
 	c.stopOverlay()
 	f, err := os.CreateTemp("", "tianyan_overlay_*.ps1")
 	if err != nil {
@@ -372,7 +385,11 @@ func (c *winController) ensureOverlay(text string) error {
 	}
 	f.Close()
 	scriptPath := f.Name()
-	cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", scriptPath, "-Text", text)
+	args := []string{"-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", scriptPath, "-Text", text}
+	if image != "" {
+		args = append(args, "-Image", image)
+	}
+	cmd := exec.Command("powershell", args...)
 	if err := cmd.Start(); err != nil {
 		os.Remove(scriptPath)
 		return err

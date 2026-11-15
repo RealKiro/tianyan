@@ -57,6 +57,7 @@ func Run(o Options) {
 
 func start(exe string, args []string) (int, error) {
 	cmd := exec.Command(exe, args...)
+	hideConsole(cmd)
 	if err := cmd.Start(); err != nil {
 		return 0, err
 	}

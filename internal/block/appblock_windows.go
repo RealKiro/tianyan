@@ -14,12 +14,16 @@ func (e *Enforcer) enforceAppsOnce() {
 	e.mu.Lock()
 	policy := e.policy
 	cb := e.OnViolation
-	doUSB := policy.BlockUSBGames && time.Since(e.lastUSBCheck) >= 10*time.Second
+	exempt := e.exempt
+	doUSB := !exempt && policy.BlockUSBGames && time.Since(e.lastUSBCheck) >= 10*time.Second
 	if doUSB {
 		e.lastUSBCheck = time.Now()
 	}
 	e.mu.Unlock()
 
+	if exempt {
+		return // per-student exemption: app/USB enforcement paused
+	}
 	if policy.Mode == "black" && len(policy.Apps) > 0 {
 		e.killBlacklisted(policy.Apps, cb)
 	}

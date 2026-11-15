@@ -20,6 +20,8 @@ const (
 const (
 	ImageThumb byte = 0x01
 	ImageFull  byte = 0x02
+	ImageDemo  byte = 0x03 // broadcast frame (teacher -> student)
+	ImageShot  byte = 0x04 // screenshot reply (student -> teacher)
 )
 
 // MaxFrameSize bounds a single frame to avoid unbounded allocations.
@@ -84,6 +86,7 @@ type Hello struct {
 	IP        string `json:"ip"`
 	MAC       string `json:"mac"`
 	OS        string `json:"os"`
+	User      string `json:"user,omitempty"` // logged-in user name
 	StudentID string `json:"student_id,omitempty"`
 	Group     string `json:"group,omitempty"`
 	Width     int    `json:"width"`
@@ -98,6 +101,7 @@ type Announce struct {
 	IP        string `json:"ip"`
 	MAC       string `json:"mac"`
 	OS        string `json:"os"`
+	User      string `json:"user,omitempty"` // logged-in user name
 	StudentID string `json:"student_id,omitempty"`
 	Group     string `json:"group,omitempty"`
 }
@@ -145,9 +149,27 @@ type Black struct {
 	Text string `json:"text,omitempty"`
 }
 
+// LockScreen is the merged black-screen + input-lock tool: an overlay with
+// a custom message (default "请保持安静") or a custom wallpaper image
+// (file name previously pushed to the student's data directory) that
+// swallows keyboard and mouse input.
+type LockScreen struct {
+	On        bool   `json:"on"`
+	Text      string `json:"text,omitempty"`
+	Wallpaper string `json:"wallpaper,omitempty"`
+}
+
 // LockInput toggles input blocking on the student machine.
 type LockInput struct {
 	On bool `json:"on"`
+}
+
+// Demo starts/stops receiving a screen broadcast on a student machine.
+// Fullscreen mode displays on top and swallows student input; window mode
+// shows a normal window the student may minimize.
+type Demo struct {
+	On         bool `json:"on"`
+	Fullscreen bool `json:"fullscreen"`
 }
 
 // Open tells a student to open an application or URL.
@@ -161,6 +183,12 @@ type Open struct {
 type Close struct {
 	Kind   string `json:"kind"` // app | window
 	Target string `json:"target"`
+}
+
+// Auth carries an authentication challenge or response.
+type Auth struct {
+	Nonce string `json:"nonce,omitempty"`
+	Token string `json:"token,omitempty"`
 }
 
 // Power commands shutdown / reboot / logout with an optional delay.
@@ -181,6 +209,13 @@ type RaiseHand struct {
 	On bool `json:"on"`
 }
 
+// BroadcastResult is the teacher's reply to a student's request to share
+// its own screen with the class: approval (broadcast starts) or rejection.
+type BroadcastResult struct {
+	Approved bool   `json:"approved"`
+	Reason   string `json:"reason,omitempty"`
+}
+
 // BlockList is the application/website blacklist or whitelist policy.
 type BlockList struct {
 	Mode          string   `json:"mode"` // black | white
@@ -189,12 +224,21 @@ type BlockList struct {
 	BlockUSBGames bool     `json:"block_usb_games,omitempty"`
 }
 
+// BlockExempt pauses/resumes rule enforcement for individual students (e.g.
+// reward those who finished their work with free app/web access). The
+// stored policy is kept and resumes when the exemption is lifted.
+type BlockExempt struct {
+	On bool `json:"on"`
+}
+
 // Status reports student state back to the teacher.
 type Status struct {
 	Muted   bool `json:"muted"`
 	Volume  int  `json:"volume"`
 	Blacked bool `json:"blacked"`
 	Locked  bool `json:"locked"`
+	Demoing bool `json:"demoing"`
+	Exempt  bool `json:"exempt"`
 }
 
 // Ack acknowledges a command.

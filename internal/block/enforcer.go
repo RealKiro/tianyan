@@ -22,6 +22,7 @@ type Policy struct {
 type Enforcer struct {
 	mu     sync.Mutex
 	policy Policy
+	exempt bool
 
 	// OnViolation reports a blocked item (kind: "app" | "usb_game") to the
 	// student client so it can notify the teacher.
@@ -38,13 +39,42 @@ func (e *Enforcer) SetPolicy(p Policy) error {
 	p.Sites = normalize(p.Sites)
 	e.mu.Lock()
 	e.policy = p
+	exempt := e.exempt
 	e.mu.Unlock()
 
-	if p.Mode == "black" {
-		return applyHosts(p.Sites)
+	// An exempt student keeps its stored policy but website rules stay
+	// released until the exemption is lifted.
+	if exempt || p.Mode != "black" {
+		return applyHosts(nil)
 	}
-	// Whitelist mode is not yet implemented for websites; clear any block.
-	return applyHosts(nil)
+	return applyHosts(p.Sites)
+}
+
+// SetExempt pauses/resumes enforcement for this individual student — used
+// to reward students who finished their work with free app/web access. The
+// policy itself is kept; hosts rules are released while exempt and
+// re-applied when the exemption is lifted.
+func (e *Enforcer) SetExempt(on bool) error {
+	e.mu.Lock()
+	if e.exempt == on {
+		e.mu.Unlock()
+		return nil
+	}
+	e.exempt = on
+	policy := e.policy
+	e.mu.Unlock()
+
+	if on || policy.Mode != "black" {
+		return applyHosts(nil)
+	}
+	return applyHosts(policy.Sites)
+}
+
+// Exempt reports whether enforcement is currently paused for this student.
+func (e *Enforcer) Exempt() bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.exempt
 }
 
 // Policy returns the current policy.
