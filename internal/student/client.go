@@ -51,8 +51,8 @@ type Config struct {
 	AutoMute         bool          // mute when the teacher comes online
 	RebootOnOffline  bool          // reboot when teacher heartbeat is lost
 	OfflineTimeout   time.Duration // how long to wait before declaring offline
-	NetDownReboot    bool          // lock screen + reboot when the network link goes down
-	NetDownTimeout   time.Duration // link-down duration before triggering NetDownReboot
+	NetDownLock      bool          // lock the screen while the network cable is unplugged
+	NetDownTimeout   time.Duration // link-down duration before triggering NetDownLock
 	ReconnectRestart time.Duration // restart the client process after failing to reconnect this long (0 = off)
 }
 
@@ -66,7 +66,7 @@ func DefaultConfig() Config {
 		AutoMute:         true,
 		RebootOnOffline:  false,
 		OfflineTimeout:   30 * time.Second,
-		NetDownReboot:    true,
+		NetDownLock:      true,
 		NetDownTimeout:   3 * time.Second,
 		ReconnectRestart: 5 * time.Minute,
 	}
@@ -1017,52 +1017,56 @@ func (c *Client) offlineMonitor() {
 	}
 }
 
-// netWatch guards against students unplugging the network cable: while the
-// physical link is down, the screen locks (input blocked) and the system
-// reboots after a countdown; if the link recovers within the countdown the
-// reboot is aborted and the lock screen lifts.
+// netWatch guards against students unplugging the network cable: the screen
+// locks (black background, red warning text, input blocked) and stays
+// locked until BOTH the physical link is back AND the teacher connection
+// has been re-established. No reboot is involved — the lock itself is the
+// protection, and it survives client process restarts (a restarted client
+// re-evaluates and locks again immediately).
 func (c *Client) netWatch() {
 	t := time.NewTicker(2 * time.Second)
 	defer t.Stop()
 	var downSince time.Time
-	pending := false
+	locked := false
 	for {
 		select {
 		case <-c.stopCh:
 			return
 		case <-t.C:
 		}
-		if !c.cfg.NetDownReboot {
+		if !c.cfg.NetDownLock {
 			return
 		}
-		if networkLinkUp() {
-			if pending {
-				// Link recovered: abort the scheduled reboot and unlock.
-				_ = c.ctrl.Power("reboot", 0, true)
-				_ = c.applyLockScreen(false, "", "", "")
-				pending = false
-			}
-			downSince = time.Time{}
-			continue
-		}
-		if downSince.IsZero() {
-			downSince = time.Now()
-		}
+		linkUp := networkLinkUp()
 		c.mu.Lock()
 		conn := c.conn
 		c.mu.Unlock()
-		if conn != nil {
-			continue // teacher connection alive; nothing to protect against
+
+		if locked {
+			// Unlock only when the cable is back AND the teacher connection
+			// has been restored.
+			if linkUp && conn != nil {
+				_ = c.applyLockScreen(false, "", "", "")
+				locked = false
+				downSince = time.Time{}
+			}
+			continue
+		}
+		if !linkUp {
+			if downSince.IsZero() {
+				downSince = time.Now()
+			}
+		} else {
+			downSince = time.Time{}
+		}
+		if linkUp || conn != nil {
+			continue // only a cable pull with no teacher connection triggers
 		}
 		if time.Since(downSince) < c.cfg.NetDownTimeout {
 			continue
 		}
-		if !pending {
-			pending = true
-			_ = c.applyLockScreen(true, "网络已断开，系统将在 60 秒后自动重启", "", "Red")
-			// The OS reboot countdown dialog doubles as the warning prompt.
-			_ = c.ctrl.Power("reboot", 60, false)
-		}
+		_ = c.applyLockScreen(true, "网络已断开，请联系老师恢复网络", "", "Red")
+		locked = true
 	}
 }
 

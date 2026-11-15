@@ -8,9 +8,13 @@ import (
 	"syscall"
 )
 
-// Spawn launches a detached guardian process watching pid.
-func Spawn(exe string, pid int) error {
+// Spawn launches a detached guardian process watching pid and returns
+// its PID for mutual-watchdog monitoring.
+func Spawn(exe string, pid int) (int, error) {
 	cmd := exec.Command(exe, "-guard", "-pid", strconv.Itoa(pid))
 	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: 0x00000008} // DETACHED_PROCESS
-	return cmd.Start()
+	if err := cmd.Start(); err != nil {
+		return 0, err
+	}
+	return cmd.Process.Pid, nil
 }

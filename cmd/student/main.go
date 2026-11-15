@@ -53,7 +53,7 @@ func main() {
 	flag.BoolVar(&cfg.AutoMute, "auto-mute", cfg.AutoMute, "教师机上线后自动静音")
 	flag.BoolVar(&cfg.RebootOnOffline, "reboot-on-offline", false, "检测到与教师失联后倒计时重启（默认关闭）")
 	flag.DurationVar(&cfg.OfflineTimeout, "offline-timeout", cfg.OfflineTimeout, "断联判定超时")
-	flag.BoolVar(&cfg.NetDownReboot, "netdown-reboot", cfg.NetDownReboot, "检测到网线断开（物理链路断）时自动锁屏并倒计时重启")
+	flag.BoolVar(&cfg.NetDownLock, "netdown-lock", cfg.NetDownLock, "检测到网线断开（物理链路断）时自动锁屏，恢复连接后解除")
 	flag.DurationVar(&cfg.NetDownTimeout, "netdown-timeout", cfg.NetDownTimeout, "网线断开判定时长")
 	flag.DurationVar(&cfg.ReconnectRestart, "reconnect-restart", cfg.ReconnectRestart, "与教师端失联后持续重连失败此时长则自动重启客户端进程（0=禁用）")
 	flag.Parse()
@@ -183,14 +183,31 @@ func main() {
 		}
 		if err := config.Save(sc); err != nil {
 			log.Printf("保存守护配置失败: %v", err)
-		} else if err := guardian.Spawn(exe, os.Getpid()); err != nil {
+		} else if gpid, err := guardian.Spawn(exe, os.Getpid()); err != nil {
 			log.Printf("启动守护进程失败: %v", err)
 		} else {
-			log.Println("进程守护已启用")
+			log.Println("进程守护已启用（双进程互守）")
+			// 双进程互守：学生端监视守护进程，守护进程被任务管理器结束立即
+			// 重新拉起；反向守护进程也在监视学生端。卸载时 StopPath 出现则
+			// 停止互守。
+			go func(gpid int, exe string) {
+				for {
+					time.Sleep(3 * time.Second)
+					if _, err := os.Stat(config.StopPath()); err == nil {
+						return // 卸载中，不再互守
+					}
+					if !guardian.ProcessAlive(gpid) {
+						log.Println("student: guardian died; respawning")
+						if np, err := guardian.Spawn(exe, os.Getpid()); err == nil {
+							gpid = np
+						}
+					}
+				}
+			}(gpid, exe)
 		}
 	}
 
-	log.Printf("天眼学生端 v%s 启动（小工具栏 http://127.0.0.1:5600）", student.Version)
+	log.Printf("天眼学生端 v%s 启动（灵动岛工具栏 + 托盘图标）", student.Version)
 
 	bar := startStudentBar(c, *noToolbar)
 	startTrayIcon(c, bar, *noTray)

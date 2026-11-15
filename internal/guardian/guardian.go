@@ -63,3 +63,9 @@ func start(exe string, args []string) (int, error) {
 	}
 	return cmd.Process.Pid, nil
 }
+
+// ProcessAlive reports whether the process with the given PID is still
+// running (used for the student-side mutual watchdog on the guardian).
+func ProcessAlive(pid int) bool {
+	return processAlive(pid)
+}
