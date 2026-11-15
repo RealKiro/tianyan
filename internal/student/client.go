@@ -406,7 +406,6 @@ var featureGroups = map[string]string{
 	"black":        "screen",
 	"lock_input":   "screen",
 	"demo":         "broadcast",
-	"screenshot":   "screen",
 	"open":         "program",
 	"close":        "program",
 	"power":        "power",
@@ -527,14 +526,6 @@ func (c *Client) handleMessage(msg protocol.Message) {
 		var d protocol.Demo
 		_ = json.Unmarshal(msg.Data, &d)
 		c.applyDemo(d, msg.ID)
-
-	case "screenshot":
-		fr, err := c.cap.Capture(0, 85)
-		if err == nil {
-			payload := append([]byte{protocol.ImageShot}, fr.JPEG...)
-			err = c.writeFrame(protocol.FrameImage, payload)
-		}
-		c.sendAck(msg.ID, err)
 
 	case "open":
 		var o protocol.Open

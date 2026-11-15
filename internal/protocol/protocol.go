@@ -21,7 +21,6 @@ const (
 	ImageThumb byte = 0x01
 	ImageFull  byte = 0x02
 	ImageDemo  byte = 0x03 // broadcast frame (teacher -> student)
-	ImageShot  byte = 0x04 // screenshot reply (student -> teacher)
 )
 
 // MaxFrameSize bounds a single frame to avoid unbounded allocations.

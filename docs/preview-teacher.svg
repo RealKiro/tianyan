@@ -28,16 +28,15 @@
   <!-- 常用工具栏（胶囊卡片） -->
   <g font-size="11" fill="#1d1d1f" text-anchor="middle">
     <rect x="14" y="82" width="72" height="50" rx="12" fill="#0071e3"/><text x="50" y="103" font-size="16" fill="#fff">📺</text><text x="50" y="122" fill="#fff">屏幕广播</text>
-    <rect x="94" y="82" width="72" height="50" rx="12" fill="#fff" stroke="#00000014"/><text x="130" y="103" font-size="16">📸</text><text x="130" y="122">屏幕截图</text>
-    <rect x="174" y="82" width="72" height="50" rx="12" fill="#fff" stroke="#00000014"/><text x="210" y="103" font-size="16">🔒</text><text x="210" y="122">锁屏</text>
-    <rect x="254" y="82" width="72" height="50" rx="12" fill="#fff" stroke="#00000014"/><text x="290" y="103" font-size="16">🔇</text><text x="290" y="122">静音</text>
-    <rect x="334" y="82" width="72" height="50" rx="12" fill="#fff" stroke="#00000014"/><text x="370" y="103" font-size="16">🖥️</text><text x="370" y="122">远程命令</text>
-    <rect x="414" y="82" width="72" height="50" rx="12" fill="#fff" stroke="#00000014"/><text x="450" y="103" font-size="16">📁</text><text x="450" y="122">文件分发</text>
-    <rect x="494" y="82" width="72" height="50" rx="12" fill="#fff" stroke="#00000014"/><text x="530" y="103" font-size="16">📥</text><text x="530" y="122">文件提交</text>
-    <rect x="574" y="82" width="72" height="50" rx="12" fill="#fff" stroke="#00000014"/><text x="610" y="103" font-size="16">📝</text><text x="610" y="122">考试</text>
-    <rect x="654" y="82" width="72" height="50" rx="12" fill="#fff" stroke="#00000014"/><text x="690" y="103" font-size="16">⏻</text><text x="690" y="122">关机</text>
-    <rect x="734" y="82" width="72" height="50" rx="12" fill="#fff" stroke="#00000014"/><text x="770" y="103" font-size="16">🔄</text><text x="770" y="122">重启</text>
-    <rect x="814" y="82" width="72" height="50" rx="12" fill="#fff" stroke="#00000014"/><text x="850" y="103" font-size="16">🔌</text><text x="850" y="122">远程开机</text>
+    <rect x="94" y="82" width="72" height="50" rx="12" fill="#fff" stroke="#00000014"/><text x="130" y="103" font-size="16">🔒</text><text x="130" y="122">锁屏</text>
+    <rect x="174" y="82" width="72" height="50" rx="12" fill="#fff" stroke="#00000014"/><text x="210" y="103" font-size="16">🔊</text><text x="210" y="122">声音调节</text>
+    <rect x="254" y="82" width="72" height="50" rx="12" fill="#fff" stroke="#00000014"/><text x="290" y="103" font-size="16">🖥️</text><text x="290" y="122">远程命令</text>
+    <rect x="334" y="82" width="72" height="50" rx="12" fill="#fff" stroke="#00000014"/><text x="370" y="103" font-size="16">📁</text><text x="370" y="122">文件分发</text>
+    <rect x="414" y="82" width="72" height="50" rx="12" fill="#fff" stroke="#00000014"/><text x="450" y="103" font-size="16">📥</text><text x="450" y="122">文件提交</text>
+    <rect x="494" y="82" width="72" height="50" rx="12" fill="#fff" stroke="#00000014"/><text x="530" y="103" font-size="16">📝</text><text x="530" y="122">考试</text>
+    <rect x="574" y="82" width="72" height="50" rx="12" fill="#fff" stroke="#00000014"/><text x="610" y="103" font-size="16">⏻</text><text x="610" y="122">关机</text>
+    <rect x="654" y="82" width="72" height="50" rx="12" fill="#fff" stroke="#00000014"/><text x="690" y="103" font-size="16">🔄</text><text x="690" y="122">重启</text>
+    <rect x="734" y="82" width="72" height="50" rx="12" fill="#fff" stroke="#00000014"/><text x="770" y="103" font-size="16">🔌</text><text x="770" y="122">远程开机</text>
   </g>
 
   <!-- 监控筛选栏 -->
@@ -132,7 +131,7 @@
   <g>
     <rect x="762" y="206" width="228" height="44" rx="10" fill="#fff" stroke="#00000010"/>
     <text x="772" y="224" font-size="10.5" fill="#86868b">15:02:14</text>
-    <text x="772" y="242" font-size="11" fill="#1d1d1f">📸 截图已保存（02号机）</text>
+    <text x="772" y="242" font-size="11" fill="#1d1d1f">🔒 已对全体执行锁屏</text>
     <rect x="762" y="258" width="228" height="58" rx="10" fill="#fff" stroke="#00000010"/>
     <text x="772" y="276" font-size="10.5" fill="#86868b">15:01:40</text>
     <text x="772" y="294" font-size="11" fill="#1d1d1f">📢 03号机请求广播屏幕</text>

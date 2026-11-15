@@ -49,11 +49,7 @@ function handle(m) {
   } else if (m.type === "broadcast_req") {
     renderBroadcastReqs(m.reqs || []);
   } else if (m.type === "event") {
-    if (m.kind === "screenshot") {
-      const text = "📸 截图已保存（" + (m.from || m.id) + "）：" + m.text;
-      addMessage(text);
-      logFile(text);
-    } else if (m.kind === "error") {
+    if (m.kind === "error") {
       addMessage("⚠️ " + (m.from || "教师") + "：" + m.text);
     } else {
       const text = (m.from || m.id) + ": " + m.text;
@@ -257,7 +253,6 @@ function runTool(name) {
   const ids = selOrAll();
   switch (name) {
     case "broadcast": openBroadcast(); break;
-    case "screenshot": cmd(ids, { screenshot: {} }); break;
     case "lockScreen": openLockScreen(ids); break;
     case "sound": openSound(ids); break;
     case "exam": notReady("考试"); break;
@@ -541,7 +536,6 @@ function setupFull() {
     controlOn = !controlOn;
     $("fullControl").textContent = controlOn ? "🖱️ 控制: 开" : "🖱️ 控制: 关";
   };
-  $("fullShot").onclick = () => { if (fullId) cmd([fullId], { screenshot: {} }); };
   $("fullExempt").onclick = () => {
     if (!fullId) return;
     const st = roster.get(fullId);

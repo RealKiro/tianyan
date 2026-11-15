@@ -78,28 +78,9 @@ func TestDemoJSON(t *testing.T) {
 	}
 }
 
-func TestImageModeBytes(t *testing.T) {
-	// The first byte of a FrameImage payload selects the stream mode; the
-	// demo/shot modes must not collide with the monitoring modes.
-	modes := map[byte]string{
-		ImageThumb: "thumb", ImageFull: "full",
-		ImageDemo: "demo", ImageShot: "shot",
-	}
-	seen := map[byte]bool{}
-	for b, name := range modes {
-		if seen[b] {
-			t.Fatalf("mode %s repeats byte %#x", name, b)
-		}
-		seen[b] = true
-	}
-	if modes[ImageDemo] == modes[ImageThumb] || modes[ImageDemo] == modes[ImageFull] {
-		t.Fatal("demo mode collides with monitoring modes")
-	}
-}
-
-func TestBroadcastResultJSON(t *testing.T) {
+func TestLockScreenJSON(t *testing.T) {
 	var buf bytes.Buffer
-	if err := WriteJSON(&buf, NewMessage("broadcast_result", BroadcastResult{Approved: false, Reason: "教师已拒绝广播请求"})); err != nil {
+	if err := WriteJSON(&buf, NewMessage("lockscreen", LockScreen{On: true, Text: "网络已断开", Color: "Red"})); err != nil {
 		t.Fatal(err)
 	}
 	_, raw, err := ReadFrame(&buf)
@@ -110,14 +91,31 @@ func TestBroadcastResultJSON(t *testing.T) {
 	if err := json.Unmarshal(raw, &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Type != "broadcast_result" {
-		t.Fatalf("type = %q", got.Type)
-	}
-	var r BroadcastResult
-	if err := json.Unmarshal(got.Data, &r); err != nil {
+	var ls LockScreen
+	if err := json.Unmarshal(got.Data, &ls); err != nil {
 		t.Fatal(err)
 	}
-	if r.Approved || r.Reason != "教师已拒绝广播请求" {
-		t.Fatalf("result = %+v", r)
+	if !ls.On || ls.Text != "网络已断开" || ls.Color != "Red" {
+		t.Fatalf("lockscreen = %+v", ls)
+	}
+}
+
+func TestImageModeBytes(t *testing.T) {
+	// The first byte of a FrameImage payload selects the stream mode; the
+	// demo mode must not collide with the monitoring modes.
+	modes := map[byte]string{
+		ImageThumb: "thumb",
+		ImageFull:  "full",
+		ImageDemo:  "demo",
+	}
+	seen := map[byte]bool{}
+	for b, name := range modes {
+		if seen[b] {
+			t.Fatalf("mode %s repeats byte %#x", name, b)
+		}
+		seen[b] = true
+	}
+	if modes[ImageDemo] == modes[ImageThumb] || modes[ImageDemo] == modes[ImageFull] {
+		t.Fatal("demo mode collides with monitoring modes")
 	}
 }

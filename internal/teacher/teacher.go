@@ -19,7 +19,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode"
 
 	"github.com/gorilla/websocket"
 
@@ -330,8 +329,6 @@ func (s *Server) handleStudent(conn net.Conn) {
 				if relay {
 					s.fanoutDemo(jpg, id)
 				}
-			} else if mode == protocol.ImageShot {
-				s.saveScreenshot(id, jpg)
 			}
 
 		case protocol.FrameFile:
@@ -457,7 +454,6 @@ type command struct {
 		Fullscreen bool   `json:"fullscreen"`
 		Source     string `json:"source"` // "" / "teacher" = teacher screen, else student id
 	} `json:"demo,omitempty"`
-	Screenshot  *struct{}             `json:"screenshot,omitempty"`
 	LockScreen  *protocol.LockScreen  `json:"lockscreen,omitempty"`
 	Open        *protocol.Open        `json:"open,omitempty"`
 	Close       *protocol.Close       `json:"close,omitempty"`
@@ -507,8 +503,6 @@ func (s *Server) dispatchCommand(ids []string, raw json.RawMessage) {
 		msg = protocol.NewMessage("black", *cmd.Black)
 	case cmd.LockInput != nil:
 		msg = protocol.NewMessage("lock_input", *cmd.LockInput)
-	case cmd.Screenshot != nil:
-		msg = protocol.NewMessage("screenshot", struct{}{})
 	case cmd.Open != nil:
 		msg = protocol.NewMessage("open", *cmd.Open)
 	case cmd.Close != nil:
@@ -721,42 +715,6 @@ func (s *Server) writeDemoFrame(st *Student, payload []byte) {
 	_ = protocol.WriteFrame(conn, protocol.FrameImage, payload)
 }
 
-// saveScreenshot stores a full-quality frame from a student on disk and
-// reports the path to the console.
-func (s *Server) saveScreenshot(id string, jpg []byte) {
-	dir := filepath.Join(s.cfg.DataDir, "screenshots")
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		log.Printf("teacher: screenshots dir: %v", err)
-		return
-	}
-	name := s.studentName(id)
-	path := filepath.Join(dir, sanitizeFilename(name)+"-"+time.Now().Format("20060102-150405")+".jpg")
-	if err := os.WriteFile(path, jpg, 0644); err != nil {
-		log.Printf("teacher: screenshot save: %v", err)
-		s.hub.broadcast(eventMsg("error", id, name, "截图保存失败："+err.Error()))
-		return
-	}
-	s.hub.broadcast(eventMsg("screenshot", id, name, path))
-}
-
-// sanitizeFilename maps a student name to a safe file name, replacing
-// separators with dashes (same spirit as Veyon's screenshot naming).
-func sanitizeFilename(name string) string {
-	var b strings.Builder
-	for _, r := range name {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			b.WriteRune(r)
-		} else {
-			b.WriteRune('-')
-		}
-	}
-	out := strings.Trim(b.String(), "-")
-	if out == "" {
-		out = "student"
-	}
-	return out
-}
-
 func (s *Server) onlineStudentIDs() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -957,10 +915,6 @@ func (s *Server) QuickCommand(action string) {
 			s.broadcastToAll(protocol.NewMessage("mute", protocol.Mute{On: false}))
 		} else {
 			s.broadcastToAll(protocol.NewMessage("mute", protocol.Mute{On: true}))
-		}
-	case "shot":
-		for _, id := range s.onlineStudentIDs() {
-			s.sendToStudent(id, protocol.NewMessage("screenshot", struct{}{}))
 		}
 	case "shutdown", "reboot":
 		msg := protocol.NewMessage("power", protocol.Power{Action: action, Delay: 0})
