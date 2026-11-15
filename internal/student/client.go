@@ -1,6 +1,6 @@
 // Package student implements the student-side client: auto-discovery,
-// screen streaming, remote command execution, blocking policies and a small
-// local toolbar served over HTTP.
+// screen streaming, remote command execution, blocking policies and fully
+// native interaction (island toolbar + tray icon, no browser).
 package student
 
 import (
@@ -8,10 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"image"
-	"io"
 	"log"
 	"net"
-	"net/http"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -36,8 +34,6 @@ import (
 // Version is the student client version; CI injects the release tag via
 // -ldflags "-X tianyan/internal/student.Version=...".
 var Version = "0.1.0"
-
-const toolbarAddr = "127.0.0.1:5600"
 
 var errNotConnected = errors.New("student: not connected to teacher")
 
@@ -176,7 +172,6 @@ func (c *Client) Run() {
 	go c.offlineMonitor()
 	go c.netWatch()
 	go c.enforcer.AppLoop(c.stopCh, 2*time.Second)
-	go c.startToolbar()
 	go c.startVNC()
 	<-c.stopCh
 }
@@ -913,6 +908,48 @@ func (c *Client) ToggleRaiseHand() {
 	c.RaiseHand(on)
 }
 
+// SendChatMessage delivers a student-to-teacher chat message from the
+// native input box.
+func (c *Client) SendChatMessage(text string) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return
+	}
+	c.sendChat(text)
+}
+
+// SendHomework pushes a local file to the teacher as submitted homework
+// (picked with the native file dialog).
+func (c *Client) SendHomework(path string) {
+	name := filepath.Base(path)
+	go c.sendFileToTeacher(path, name)
+	c.sendChat("已提交作业：" + name)
+}
+
+// AdminInfo renders the multi-line detail shown in the tray-unlock status
+// window (name/IP/MAC/teacher/state).
+func (c *Client) AdminInfo() string {
+	c.mu.Lock()
+	teacher := c.teacherIP
+	online := c.conn != nil
+	blacked, locked := c.blacked, c.locked
+	c.mu.Unlock()
+	exempt := c.enforcer.Exempt()
+	host, _ := os.Hostname()
+	lines := []string{
+		"名称：" + c.cfg.Name,
+		"主机名：" + host,
+		"IP：" + c.ip,
+		"MAC：" + c.mac,
+		"教师机：" + teacher,
+		"连接：" + map[bool]string{true: "已连接", false: "未连接"}[online],
+		"锁屏：" + map[bool]string{true: "是", false: "否"}[blacked || locked],
+		"策略限制：" + map[bool]string{true: "已解除（奖励）", false: "生效中"}[exempt],
+		"版本：" + Version,
+	}
+	return strings.Join(lines, "\n")
+}
+
 func (c *Client) sendChat(text string) {
 	c.sendJSON(protocol.NewMessage("chat", protocol.Chat{From: c.cfg.Name, Text: text}))
 }
@@ -1069,104 +1106,6 @@ func (c *Client) sendJSON(msg protocol.Message) {
 	_ = c.writeFrame(protocol.FrameJSON, raw)
 }
 
-// ---- local toolbar ----
-
-func (c *Client) startToolbar() {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = io.WriteString(w, toolbarHTML)
-	})
-	mux.HandleFunc("/api/info", func(w http.ResponseWriter, r *http.Request) {
-		c.mu.Lock()
-		raising := c.raising
-		muted := c.muted
-		volume := c.volume
-		blacked := c.blacked
-		locked := c.locked
-		teacherIP := c.teacherIP
-		bState := c.broadcastState
-		bMsg := c.broadcastMsg
-		online := c.conn != nil
-		c.mu.Unlock()
-		exempt := c.enforcer.Exempt()
-		c.msgMu.Lock()
-		last := c.lastTeacherMsg
-		c.msgMu.Unlock()
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"name": c.cfg.Name, "ip": c.ip, "mac": c.mac,
-			"teacher": teacherIP, "raising": raising, "muted": muted,
-			"volume": volume, "blacked": blacked, "locked": locked,
-			"lastMessage": last, "broadcastState": bState, "broadcastMsg": bMsg,
-			"exempt": exempt, "online": online,
-		})
-	})
-	mux.HandleFunc("/api/raise", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "POST only", http.StatusMethodNotAllowed)
-			return
-		}
-		c.mu.Lock()
-		raising := !c.raising
-		c.mu.Unlock()
-		c.RaiseHand(raising)
-		_, _ = io.WriteString(w, "ok")
-	})
-	mux.HandleFunc("/api/broadcast-request", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "POST only", http.StatusMethodNotAllowed)
-			return
-		}
-		c.RequestBroadcast()
-		_, _ = io.WriteString(w, "ok")
-	})
-	mux.HandleFunc("/api/chat", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "POST only", http.StatusMethodNotAllowed)
-			return
-		}
-		text := strings.TrimSpace(r.FormValue("text"))
-		if text == "" {
-			http.Error(w, "empty", http.StatusBadRequest)
-			return
-		}
-		c.sendChat(text)
-		_, _ = io.WriteString(w, "ok")
-	})
-	mux.HandleFunc("/api/homework", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "POST only", http.StatusMethodNotAllowed)
-			return
-		}
-		f, hdr, err := r.FormFile("file")
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		defer f.Close()
-		dir := filepath.Join(c.cfg.DataDir, "homework")
-		_ = os.MkdirAll(dir, 0755)
-		dest := filepath.Join(dir, filepath.Base(hdr.Filename))
-		out, err := os.Create(dest)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		_, _ = io.Copy(out, f)
-		_ = out.Close()
-		go c.sendFileToTeacher(dest, hdr.Filename)
-		c.sendChat("已提交作业：" + hdr.Filename)
-		_, _ = io.WriteString(w, "ok")
-	})
-
-	srv := &http.Server{Addr: toolbarAddr, Handler: mux}
-	log.Printf("student: toolbar listening on http://%s", toolbarAddr)
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Printf("student: toolbar: %v", err)
-	}
-}
-
 // startVNC exposes the student screen via the RFB protocol on cfg.VNCPort.
 func (c *Client) startVNC() {
 	if c.cfg.VNCPort <= 0 {
@@ -1260,42 +1199,3 @@ func isPrivateIPv4(ip net.IP) bool {
 			(ip[0] == 172 && ip[1] >= 16 && ip[1] <= 31) ||
 			(ip[0] == 192 && ip[1] == 168))
 }
-
-const toolbarHTML = `<!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>天眼 · 学生端</title>
-<style>
-body{font-family:"Microsoft YaHei",sans-serif;max-width:520px;margin:40px auto;padding:0 16px;color:#1f2937}
-h1{font-size:20px} .card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin:12px 0}
-button{background:#2563eb;color:#fff;border:0;border-radius:8px;padding:10px 16px;font-size:14px;cursor:pointer}
-button.secondary{background:#6b7280} button.warn{background:#dc2626}
-input[type=text],input[type=file]{width:100%;box-sizing:border-box;padding:8px;margin:6px 0;border:1px solid #d1d5db;border-radius:6px}
-.row{display:flex;gap:8px;align-items:center;margin:8px 0}
-#status{color:#6b7280;font-size:13px;white-space:pre-line}
-</style></head><body>
-<h1>🖥️ 天眼学生端</h1>
-<div class="card" id="status">加载中…</div>
-<div class="card">
-<div class="row"><button id="raise">✋ 举手</button><button id="chat" class="secondary">💬 发消息</button></div>
-<input id="msg" type="text" placeholder="输入要发给老师的话">
-<div class="row"><input type="file" id="file"><button id="submit" class="secondary">📤 提交作业</button></div>
-<div class="row"><button id="bcast">📺 请求广播我的屏幕</button><span id="bcastState" style="color:#6b7280;font-size:13px"></span></div>
-<div class="hint" style="color:#8b95a1;font-size:12px;margin-top:6px">广播屏幕需教师批准后才会开始。</div>
-</div>
-<script>
-const $=id=>document.getElementById(id);
-async function refresh(){
-  try{const r=await fetch('/api/info');const d=await r.json();
-    const off=!d.online;
-    ['raise','chat','submit','bcast'].forEach(id=>{$(id).disabled=off;$(id).style.opacity=off?'.45':'1'});
-    $('status').textContent='姓名：'+d.name+'\nIP：'+d.ip+'  MAC：'+d.mac+'\n教师机：'+(d.teacher||'未发现')+(off?'（未连接，工具已禁用）':'')+'\n举手：'+(d.raising?'是':'否')+'  静音：'+(d.muted?'是':'否')+'  音量：'+d.volume+'\n锁屏：'+(d.blacked?'是':'否')+'\n策略限制：'+(d.exempt?'已解除（奖励自由使用）':'生效中')+'\n老师消息：'+(d.lastMessage||'无');
-    $('bcastState').textContent=d.broadcastMsg||'';
-  }catch(e){$('status').textContent='连接本地服务失败';}
-}
-$('raise').onclick=async()=>{await fetch('/api/raise',{method:'POST'});refresh()};
-$('chat').onclick=async()=>{const t=$('msg').value.trim();if(!t)return;await fetch('/api/chat',{method:'POST',body:new URLSearchParams({text:t})});$('msg').value='';refresh()};
-$('submit').onclick=async()=>{const f=$('file').files[0];if(!f)return;const fd=new FormData();fd.append('file',f);await fetch('/api/homework',{method:'POST',body:fd});$('file').value='';refresh()};
-$('bcast').onclick=async()=>{await fetch('/api/broadcast-request',{method:'POST'});refresh()};
-setInterval(refresh,2000);refresh();
-</script></body></html>`

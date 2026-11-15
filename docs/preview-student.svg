@@ -1,50 +1,48 @@
-<?xml version="1.0" encoding="utf-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="560" height="420" viewBox="0 0 560 420" font-family="-apple-system,'SF Pro SC','PingFang SC','Segoe UI','Microsoft YaHei',sans-serif">
   <rect width="560" height="420" fill="#f5f5f7"/>
 
-  <!-- 灵动岛工具栏（顶部悬浮胶囊） -->
-  <rect x="130" y="10" width="300" height="30" rx="15" fill="#1d1d1f"/>
-  <text x="150" y="30" font-size="11" fill="#30d158">●</text>
-  <text x="166" y="30" font-size="11" fill="#f5f5f7">已连接教师机 192.168.31.10</text>
-  <text x="416" y="30" font-size="11" fill="#f5f5f7" text-anchor="end">老师：请保持安静</text>
-  <text x="130" y="58" font-size="10" fill="#86868b">▲ 灵动岛工具栏 · 悬停展开 举手/消息/作业/广播 · 移开自动收回</text>
+  <!-- 灵动岛（收纳态：顶部悬浮胶囊） -->
+  <rect x="150" y="10" width="260" height="30" rx="15" fill="#1d1d1f"/>
+  <text x="168" y="30" font-size="11" fill="#30d158">●</text>
+  <text x="184" y="30" font-size="11" fill="#f5f5f7">已连接教师机 192.168.31.10</text>
+  <text x="398" y="30" font-size="11" fill="#f5f5f7" text-anchor="end">老师：请保持安静</text>
+  <text x="150" y="58" font-size="10" fill="#86868b">▲ 灵动岛（收纳态）· 鼠标悬停自动展开 ↓</text>
 
-  <!-- 系统托盘图标 -->
-  <circle cx="536" cy="25" r="11" fill="#0071e3"/>
-  <circle cx="536" cy="25" r="8.5" fill="#338ff0"/>
-  <text x="470" y="29" font-size="10" fill="#86868b" text-anchor="end">托盘图标（Shift+双击 + 密码进入）</text>
-
-  <!-- 页面标题 -->
-  <text x="20" y="92" font-size="22" font-weight="700" fill="#1d1d1f">🖥️ 天眼学生端</text>
-
-  <!-- 状态卡片 -->
-  <rect x="20" y="106" width="520" height="128" rx="16" fill="#ffffff" stroke="#0000000a"/>
-  <g font-size="12" fill="#6e6e73">
-    <text x="38" y="132">姓名：RedmiBook</text>
-    <text x="270" y="132">IP：192.168.31.104</text>
-    <text x="38" y="152">MAC：18:cc:18:37:79:54</text>
-    <text x="270" y="152">教师机：192.168.31.10</text>
-    <text x="38" y="172">举手：否　　静音：是　　音量：0</text>
-    <text x="38" y="192">锁屏：否　　策略限制：生效中</text>
-    <text x="270" y="192">老师消息：请保持安静</text>
+  <!-- 灵动岛（展开态） -->
+  <rect x="110" y="70" width="340" height="52" rx="22" fill="#1d1d1f"/>
+  <g font-size="12" fill="#f5f5f7" text-anchor="middle">
+    <rect x="124" y="80" width="56" height="30" rx="15" fill="#0071e3"/><text x="152" y="100">✋ 举手</text>
+    <rect x="186" y="80" width="56" height="30" rx="15" fill="#0071e3" opacity=".85"/><text x="214" y="100">💬 消息</text>
+    <rect x="248" y="80" width="56" height="30" rx="15" fill="#0071e3" opacity=".85"/><text x="276" y="100">📤 作业</text>
+    <rect x="310" y="80" width="62" height="30" rx="15" fill="#0071e3" opacity=".85"/><text x="341" y="100">📺 广播</text>
   </g>
+  <text x="110" y="140" font-size="10" fill="#86868b">▲ 灵动岛（展开态）· 举手一键直发；消息/作业弹原生窗口；广播需教师批准</text>
 
-  <!-- 操作卡片 -->
-  <rect x="20" y="248" width="520" height="158" rx="16" fill="#ffffff" stroke="#0000000a"/>
-  <g font-size="13" fill="#ffffff" text-anchor="middle">
-    <rect x="38" y="266" width="112" height="36" rx="18" fill="#0071e3"/><text x="94" y="289">✋ 举手</text>
-    <rect x="158" y="266" width="112" height="36" rx="18" fill="#e8e8ed" /><text x="214" y="289" fill="#1d1d1f">💬 发消息</text>
+  <!-- 原生消息输入框 -->
+  <rect x="60" y="158" width="330" height="128" rx="14" fill="#fff" stroke="#0000001a"/>
+  <text x="76" y="182" font-size="12" font-weight="600" fill="#1d1d1f">发送消息给老师</text>
+  <rect x="76" y="194" width="298" height="26" rx="8" fill="#f5f5f7" stroke="#0000001a"/>
+  <text x="88" y="212" font-size="12" fill="#aeaeb2">消息内容…</text>
+  <g font-size="12" text-anchor="middle">
+    <rect x="146" y="232" width="72" height="28" rx="14" fill="#0071e3"/><text x="182" y="251" fill="#fff">确定</text>
+    <rect x="228" y="232" width="72" height="28" rx="14" fill="#f5f5f7"/><text x="264" y="251" fill="#1d1d1f">取消</text>
   </g>
-  <rect x="38" y="312" width="340" height="34" rx="10" fill="#f5f5f7" stroke="#0000000d"/>
-  <text x="50" y="333" font-size="12" fill="#aeaeb2">输入要发给老师的话</text>
-  <rect x="386" y="312" width="134" height="34" rx="10" fill="#f5f5f7" stroke="#0000000d"/>
-  <text x="404" y="333" font-size="11" fill="#aeaeb2">选择文件</text>
-  <g font-size="13" text-anchor="middle">
-    <rect x="38" y="354" width="112" height="36" rx="18" fill="#e8e8ed"/><text x="94" y="377" fill="#1d1d1f">📤 提交作业</text>
-    <rect x="158" y="354" width="150" height="36" rx="18" fill="#0071e3"/><text x="233" y="377">📺 请求广播我的屏幕</text>
-  </g>
-  <text x="320" y="377" font-size="11" fill="#86868b">广播屏幕需教师批准后才会开始</text>
+  <text x="406" y="222" font-size="10" fill="#86868b">◀ 原生窗口</text>
+
+  <!-- 原生作业文件选择 -->
+  <rect x="60" y="296" width="330" height="96" rx="14" fill="#fff" stroke="#0000001a"/>
+  <text x="76" y="320" font-size="12" font-weight="600" fill="#1d1d1f">选择要提交的作业文件</text>
+  <rect x="76" y="332" width="298" height="26" rx="8" fill="#f5f5f7" stroke="#0000001a"/>
+  <text x="88" y="350" font-size="12" fill="#aeaeb2">实验报告.docx</text>
+  <rect x="146" y="358" width="72" height="28" rx="14" fill="#0071e3"/>
+  <text x="182" y="377" font-size="12" fill="#fff" text-anchor="middle">打开</text>
+  <text x="406" y="360" font-size="10" fill="#86868b">◀ 原生文件选择器</text>
+
+  <!-- 托盘图标 -->
+  <circle cx="536" cy="90" r="11" fill="#0071e3"/>
+  <circle cx="536" cy="90" r="8.5" fill="#338ff0"/>
+  <text x="466" y="94" font-size="10" fill="#86868b" text-anchor="end">托盘图标（Shift+双击+密码 → 状态窗口）</text>
 
   <!-- 底部说明 -->
-  <text x="20" y="408" font-size="10.5" fill="#86868b">与教师端断开时：托盘图标变灰，工具栏按钮置灰，灵动岛显示“未连接教师机”</text>
+  <text x="20" y="408" font-size="10.5" fill="#86868b">全程无浏览器：所有交互通过原生窗口完成，数据经学生端↔教师端通道直传；断开时图标变灰、按钮置灰</text>
 </svg>

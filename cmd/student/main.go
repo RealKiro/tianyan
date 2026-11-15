@@ -19,6 +19,7 @@ import (
 	"tianyan/internal/config"
 	"tianyan/internal/dock"
 	"tianyan/internal/guardian"
+	"tianyan/internal/nativeui"
 	"tianyan/internal/password"
 	"tianyan/internal/student"
 	"tianyan/internal/tray"
@@ -239,8 +240,16 @@ func startStudentBar(c *student.Client, disabled bool) *dock.Bar {
 			switch id {
 			case 1:
 				c.ToggleRaiseHand()
-			case 2, 3:
-				openURL("http://127.0.0.1:5600")
+			case 2:
+				nativeui.InputBox("发送消息给老师", "消息内容：", func(text string) {
+					c.SendChatMessage(text)
+				})
+			case 3:
+				nativeui.PickFile("选择要提交的作业文件", func(path string) {
+					if path != "" {
+						c.SendHomework(path)
+					}
+				})
 			case 4:
 				c.RequestBroadcast()
 			}
@@ -299,7 +308,7 @@ func startTrayIcon(c *student.Client, bar *dock.Bar, disabled bool) {
 			}
 			return true
 		},
-		OnUnlock: func() { openURL("http://127.0.0.1:5600") },
+		OnUnlock: func() { nativeui.StatusBox("天眼 · 客户端管理", c.AdminInfo()) },
 	})
 	if err != nil {
 		log.Printf("student: tray icon: %v", err)
@@ -312,11 +321,6 @@ func startTrayIcon(c *student.Client, bar *dock.Bar, disabled bool) {
 		}
 		bar.SetLabel(c.StatusLine())
 	}
-}
-
-// openURL opens the default browser (local toolbar pages).
-func openURL(url string) {
-	_ = exec.Command("cmd", "/C", "start", "", url).Start()
 }
 
 // restartArgs removes guardian-only flags so the restart does not spawn a
