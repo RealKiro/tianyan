@@ -229,3 +229,11 @@ button { cursor: pointer; transition: all .18s ease; }
   cursor: pointer; color: #1d1d1f; font-size: 13px; transition: background .15s;
 }
 .rc-grid button:hover { background: #e8e8ed; }
+
+/* 声音调节 */
+.snd-actions { display: flex; gap: 10px; margin-top: 12px; }
+.snd-actions button {
+  flex: 1; padding: 8px 6px; background: #f5f5f7; border: none;
+  border-radius: 980px; cursor: pointer; font-size: 12px; color: #1d1d1f; transition: background .15s;
+}
+.snd-actions button:hover { background: #e8e8ed; }

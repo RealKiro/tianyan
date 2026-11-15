@@ -259,18 +259,10 @@ function runTool(name) {
     case "broadcast": openBroadcast(); break;
     case "screenshot": cmd(ids, { screenshot: {} }); break;
     case "lockScreen": openLockScreen(ids); break;
+    case "sound": openSound(ids); break;
     case "exam": notReady("考试"); break;
     case "fileSubmit": notReady("文件提交（收集作业）"); break;
-    case "muteAll": cmd(ids, { mute: { on: true } }); break;
-    case "unmuteAll": cmd(ids, { mute: { on: false } }); break;
     case "remoteCmd": openRemoteCmd(); break;
-    case "shutdown": if (confirm("确认对所选学生执行关机？")) cmd(ids, { power: { action: "shutdown", delay: 0 } }); break;
-    case "reboot": if (confirm("确认对所选学生执行重启？")) cmd(ids, { power: { action: "reboot", delay: 0 } }); break;
-    case "wake": {
-      const mac = promptText("输入学生 MAC 地址（远程开机 / Wake-on-LAN）");
-      if (mac) fetch("/api/wol", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mac }) });
-      break;
-    }
     case "sendFile": {
       $("fileInput").onchange = async () => {
         const f = $("fileInput").files[0];
@@ -414,6 +406,37 @@ function openLockScreen(ids) {
   };
 }
 
+// openSound shows the volume/mute dialog for the selected students (or
+// all): a remote volume slider plus explicit mute controls.
+function openSound(ids) {
+  // Prefill the slider from the first selected student that reports volume.
+  let cur = 50;
+  for (const id of ids) {
+    const st = roster.get(id);
+    if (st && st.volume > 0) { cur = st.volume; break; }
+  }
+  const muted = ids.length === 1 && (() => { const s = roster.get(ids[0]); return s && s.muted; })();
+  const scope = selected.size ? "所选 " + selected.size + " 台" : "全体学生";
+  const body =
+    '<label>🔊 音量大小（远程调节 ' + esc(scope) + '）</label>' +
+    '<div style="display:flex;align-items:center;gap:10px">' +
+    '<input type="range" id="sndVol" min="0" max="100" value="' + cur + '" style="flex:1" oninput="document.getElementById(\'sndVal\').textContent=this.value">' +
+    '<b id="sndVal" style="min-width:34px;text-align:right">' + cur + "</b>" +
+    "</div>" +
+    '<div class="snd-actions">' +
+    '<button id="sndMute">🔇 全体静音</button>' +
+    '<button id="sndUnmute">🔊 取消静音</button>' +
+    "</div>" +
+    (muted !== null && ids.length === 1 ? '<div class="hint">当前状态：' + (muted ? "已静音" : "未静音") + "</div>" : '<div class="hint">未选中学生时对全体生效</div>');
+  modal("声音调节", body, () => {
+    const level = Math.max(0, Math.min(100, +$("sndVol").value || 0));
+    cmd(ids, { volume: { level } });
+    addMessage("🔊 已将 " + scope + " 音量调节为 " + level);
+  }, "🔊 应用音量");
+  $("sndMute").onclick = () => { cmd(ids, { mute: { on: true } }); addMessage("🔇 已静音 " + scope); };
+  $("sndUnmute").onclick = () => { cmd(ids, { mute: { on: false } }); addMessage("🔊 已取消静音 " + scope); };
+}
+
 function openRemoteCmd() {
   const body =
     '<div class="rc-grid">' +
@@ -424,6 +447,9 @@ function openRemoteCmd() {
     '<button onclick="rcUnlockScreen()">🔓 解除锁屏</button>' +
     '<button onclick="rcUnmute()">🔊 取消静音</button>' +
     '<button onclick="rcChat()">💬 发送消息</button>' +
+    '<button onclick="rcShutdown()">⏻ 远程关机</button>' +
+    '<button onclick="rcReboot()">🔄 远程重启</button>' +
+    '<button onclick="rcWake()">🔌 远程开机</button>' +
     "</div>";
   modal("远程命令", body, () => true);
 }
@@ -435,6 +461,12 @@ function rcCloseWindow() { const t = promptText("要关闭的窗口标题关键�
 function rcUnlockScreen() { cmd(selOrAll(), { lockscreen: { on: false } }); }
 function rcUnmute() { cmd(selOrAll(), { mute: { on: false } }); }
 function rcChat() { const t = promptText("发送给学生的消息"); if (t) cmd(selOrAll(), { chat: { text: t } }); }
+function rcShutdown() { if (confirm("确认对所选学生（未选中则为全体）执行【关机】？")) cmd(selOrAll(), { power: { action: "shutdown", delay: 0 } }); }
+function rcReboot() { if (confirm("确认对所选学生（未选中则为全体）执行【重启】？")) cmd(selOrAll(), { power: { action: "reboot", delay: 0 } }); }
+function rcWake() {
+  const mac = promptText("输入学生 MAC 地址（远程开机 / Wake-on-LAN）");
+  if (mac) fetch("/api/wol", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mac }) });
+}
 
 function openBlocklist(ids, preset) {
   const mode = preset || "black";
