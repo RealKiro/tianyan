@@ -56,6 +56,9 @@ func applyHosts(sites []string) error {
 	return nil
 }
 
+// RestoreHosts removes the TianYan-managed block from the hosts file.
+func RestoreHosts() error { return applyHosts(nil) }
+
 func stripManagedBlock(content string) string {
 	for {
 		i := strings.Index(content, blockStart)

@@ -1,137 +1,135 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1000" height="560" viewBox="0 0 1000 560" font-family="'Microsoft YaHei','PingFang SC','Segoe UI',sans-serif">
   <defs>
-    <linearGradient id="scrBlue" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#1d4ed8"/><stop offset="1" stop-color="#0ea5e9"/>
+    <linearGradient id="title" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4a90d9"/><stop offset="1" stop-color="#2f6fb2"/>
     </linearGradient>
-    <linearGradient id="scrPurple" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#6d28d9"/><stop offset="1" stop-color="#a855f7"/>
-    </linearGradient>
-    <linearGradient id="scrGreen" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#059669"/><stop offset="1" stop-color="#34d399"/>
-    </linearGradient>
-    <linearGradient id="scrOrange" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#ea580c"/><stop offset="1" stop-color="#fbbf24"/>
-    </linearGradient>
-    <linearGradient id="scrTeal" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#0d9488"/><stop offset="1" stop-color="#2dd4bf"/>
-    </linearGradient>
-    <linearGradient id="scrRed" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#dc2626"/><stop offset="1" stop-color="#f472b6"/>
-    </linearGradient>
+    <linearGradient id="scr1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1d4ed8"/><stop offset="1" stop-color="#0ea5e9"/></linearGradient>
+    <linearGradient id="scr2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6d28d9"/><stop offset="1" stop-color="#a855f7"/></linearGradient>
+    <linearGradient id="scr3" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#059669"/><stop offset="1" stop-color="#34d399"/></linearGradient>
+    <linearGradient id="scr4" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ea580c"/><stop offset="1" stop-color="#fbbf24"/></linearGradient>
   </defs>
 
-  <!-- 背景 -->
-  <rect width="1000" height="560" fill="#0f172a"/>
+  <rect width="1000" height="560" fill="#f4f6f8"/>
 
-  <!-- 顶栏 -->
-  <rect width="1000" height="48" fill="#1e293b"/>
-  <line x1="0" y1="48" x2="1000" y2="48" stroke="#334155"/>
-  <text x="16" y="31" font-size="20" font-weight="700" fill="#38bdf8">天眼</text>
-  <text x="62" y="31" font-size="12" fill="#94a3b8">电子教室 · 教师端</text>
+  <!-- 标题栏 -->
+  <rect width="1000" height="34" fill="url(#title)"/>
+  <text x="14" y="23" font-size="15" font-weight="700" fill="#ffffff">天眼</text>
+  <text x="52" y="23" font-size="12" fill="#eaf2fb">电子教室 · 教师端</text>
+  <text x="960" y="23" font-size="11" fill="#dfeaf5" text-anchor="end">— □ ✕</text>
 
-  <!-- 工具栏按钮 -->
-  <g font-size="11" fill="#e2e8f0" text-anchor="middle">
-    <rect x="180" y="11" width="86" height="26" rx="6" fill="#334155" stroke="#475569"/><text x="223" y="28">🔇 全体静音</text>
-    <rect x="272" y="11" width="86" height="26" rx="6" fill="#334155" stroke="#475569"/><text x="315" y="28">⬛ 全体黑屏</text>
-    <rect x="364" y="11" width="86" height="26" rx="6" fill="#334155" stroke="#475569"/><text x="407" y="28">🌐 打开网页</text>
-    <rect x="456" y="11" width="86" height="26" rx="6" fill="#334155" stroke="#475569"/><text x="499" y="28">📦 打开应用</text>
-    <rect x="548" y="11" width="86" height="26" rx="6" fill="#334155" stroke="#475569"/><text x="591" y="28">❌ 关闭应用</text>
-    <rect x="640" y="11" width="86" height="26" rx="6" fill="#334155" stroke="#475569"/><text x="683" y="28">🚫 关闭网页</text>
-    <rect x="732" y="11" width="64" height="26" rx="6" fill="#334155" stroke="#475569"/><text x="764" y="28">⏻ 关机</text>
-    <rect x="802" y="11" width="82" height="26" rx="6" fill="#334155" stroke="#475569"/><text x="843" y="28">🛡️ 黑白名单</text>
+  <!-- 菜单栏 -->
+  <rect y="34" width="1000" height="26" fill="#e7ecf2"/>
+  <g font-size="12" fill="#2b3a4a">
+    <text x="12" y="52">文件(F)</text><text x="62" y="52">视图(V)</text><text x="112" y="52">远程(R)</text>
+    <text x="162" y="52">控制(C)</text><text x="212" y="52">系统(S)</text><text x="262" y="52">工具(T)</text><text x="312" y="52">帮助(H)</text>
   </g>
 
-  <!-- 学生网格 -->
-  <g font-size="12" fill="#e2e8f0">
-    <!-- 卡片1：浏览器 -->
-    <g>
-      <rect x="12" y="64" width="215" height="150" rx="10" fill="#1e293b" stroke="#334155"/>
-      <rect x="18" y="70" width="203" height="92" rx="4" fill="url(#scrBlue)"/>
-      <rect x="28" y="80" width="150" height="72" rx="3" fill="#f8fafc"/>
-      <rect x="28" y="80" width="150" height="16" rx="3" fill="#e2e8f0"/>
-      <circle cx="37" cy="88" r="3" fill="#ef4444"/><circle cx="48" cy="88" r="3" fill="#f59e0b"/><circle cx="59" cy="88" r="3" fill="#22c55e"/>
-      <rect x="34" y="102" width="100" height="6" rx="3" fill="#cbd5e1"/>
-      <rect x="34" y="114" width="120" height="6" rx="3" fill="#cbd5e1"/>
-      <rect x="34" y="126" width="60" height="6" rx="3" fill="#93c5fd"/>
-      <text x="18" y="124" font-size="12" font-weight="600" fill="#e2e8f0">01号机 · 李同学</text>
-      <text x="18" y="140" font-size="10" fill="#94a3b8">192.168.31.11 · 在线</text>
-    </g>
+  <!-- 工具栏 -->
+  <rect y="60" width="1000" height="36" fill="#eef2f6"/>
+  <line x1="0" y1="96" x2="1000" y2="96" stroke="#d3dbe4"/>
+  <g font-size="11" fill="#22303e" text-anchor="middle">
+    <rect x="8" y="66" width="20" height="24" fill="none"/><text x="18" y="82" fill="#7b8794">声音</text>
+    <rect x="42" y="65" width="76" height="26" rx="4" fill="#fbfdfe" stroke="#b9c6d4"/><text x="80" y="82">🔇 全体静音</text>
+    <rect x="122" y="65" width="76" height="26" rx="4" fill="#fbfdfe" stroke="#b9c6d4"/><text x="160" y="82">🔊 取消静音</text>
+    <rect x="203" y="66" width="1" height="24" fill="#c3cdd8"/>
+    <text x="220" y="82" fill="#7b8794">屏幕</text>
+    <rect x="244" y="65" width="76" height="26" rx="4" fill="#fbfdfe" stroke="#b9c6d4"/><text x="282" y="82">⬛ 全体黑屏</text>
+    <rect x="324" y="65" width="76" height="26" rx="4" fill="#fbfdfe" stroke="#b9c6d4"/><text x="362" y="82">🖥️ 解除黑屏</text>
+    <rect x="404" y="65" width="76" height="26" rx="4" fill="#fbfdfe" stroke="#b9c6d4"/><text x="442" y="82">🔒 全体锁定</text>
+    <rect x="485" y="66" width="1" height="24" fill="#c3cdd8"/>
+    <text x="502" y="82" fill="#7b8794">程序</text>
+    <rect x="526" y="65" width="76" height="26" rx="4" fill="#fbfdfe" stroke="#b9c6d4"/><text x="564" y="82">🌐 打开网页</text>
+    <rect x="606" y="65" width="76" height="26" rx="4" fill="#fbfdfe" stroke="#b9c6d4"/><text x="644" y="82">📦 打开应用</text>
+    <rect x="686" y="65" width="76" height="26" rx="4" fill="#fbfdfe" stroke="#b9c6d4"/><text x="724" y="82">❌ 关闭应用</text>
+    <rect x="766" y="65" width="76" height="26" rx="4" fill="#fbfdfe" stroke="#b9c6d4"/><text x="804" y="82">🚫 关闭网页</text>
+    <rect x="847" y="66" width="1" height="24" fill="#c3cdd8"/>
+    <text x="864" y="82" fill="#7b8794">电源</text>
+    <rect x="888" y="65" width="48" height="26" rx="4" fill="#fbfdfe" stroke="#b9c6d4"/><text x="912" y="82">⏻ 关机</text>
+    <rect x="940" y="65" width="48" height="26" rx="4" fill="#fbfdfe" stroke="#b9c6d4"/><text x="964" y="82">🔄 重启</text>
+  </g>
 
-    <!-- 卡片2：代码编辑器 -->
-    <g>
-      <rect x="237" y="64" width="215" height="150" rx="10" fill="#1e293b" stroke="#334155"/>
-      <rect x="243" y="70" width="203" height="92" rx="4" fill="url(#scrPurple)"/>
-      <rect x="253" y="80" width="150" height="72" rx="3" fill="#0b1220"/>
-      <rect x="262" y="90" width="90" height="6" rx="3" fill="#38bdf8"/>
-      <rect x="262" y="102" width="120" height="6" rx="3" fill="#34d399"/>
-      <rect x="262" y="114" width="70" height="6" rx="3" fill="#f472b6"/>
-      <text x="243" y="124" font-size="12" font-weight="600" fill="#e2e8f0">02号机 · 王同学</text>
-      <text x="243" y="140" font-size="10" fill="#94a3b8">192.168.31.12 · 在线</text>
-      <rect x="419" y="70" width="21" height="18" rx="4" fill="#f59e0b"/><text x="425" y="83" font-size="10" fill="#1e293b">✋</text>
-    </g>
+  <!-- 左侧学生机列表 -->
+  <rect x="0" y="96" width="260" height="440" fill="#f7f9fb"/>
+  <line x1="260" y1="96" x2="260" y2="536" stroke="#d3dbe4"/>
+  <rect x="0" y="96" width="260" height="28" fill="#eef3f8"/>
+  <text x="10" y="115" font-size="13" font-weight="700" fill="#2f6fb2">学生机列表</text>
+  <g font-size="12" fill="#1f2937">
+    <text x="12" y="142" font-size="11" fill="#7b8794">第一组 (3)</text>
+    <rect x="6" y="150" width="248" height="24" rx="4" fill="#cfe3f7"/><text x="14" y="167">● 01号机 · 李同学</text><text x="180" y="167" font-size="11" fill="#8b95a1">192.168.31.11</text>
+    <rect x="6" y="178" width="248" height="24" rx="4" fill="#f7f9fb"/><text x="14" y="195">● 02号机 · 王同学</text><text x="180" y="195" font-size="11" fill="#8b95a1">192.168.31.12</text>
+    <rect x="6" y="206" width="248" height="24" rx="4" fill="#f7f9fb"/><text x="14" y="223">● 03号机 · 张同学</text><text x="180" y="223" font-size="11" fill="#8b95a1">192.168.31.13</text>
+    <text x="12" y="246" font-size="11" fill="#7b8794">第二组 (2)</text>
+    <rect x="6" y="254" width="248" height="24" rx="4" fill="#f7f9fb"/><text x="14" y="271">● 04号机 · 陈同学</text><text x="180" y="271" font-size="11" fill="#8b95a1">192.168.31.14</text>
+    <rect x="6" y="282" width="248" height="24" rx="4" fill="#f7f9fb"/><text x="14" y="299">○ 05号机 · 刘同学</text><text x="180" y="299" font-size="11" fill="#8b95a1">192.168.31.15</text>
+  </g>
 
-    <!-- 卡片3：图表 -->
+  <!-- 中部屏幕网格 -->
+  <rect x="260" y="96" width="500" height="440" fill="#ffffff"/>
+  <g font-size="12" fill="#1f2937">
+    <!-- 卡片1 -->
     <g>
-      <rect x="462" y="64" width="215" height="150" rx="10" fill="#1e293b" stroke="#334155"/>
-      <rect x="468" y="70" width="203" height="92" rx="4" fill="url(#scrGreen)"/>
-      <rect x="478" y="80" width="150" height="72" rx="3" fill="#f8fafc"/>
-      <rect x="486" y="128" width="18" height="18" rx="2" fill="#34d399"/>
-      <rect x="510" y="112" width="18" height="34" rx="2" fill="#10b981"/>
-      <rect x="534" y="96" width="18" height="50" rx="2" fill="#059669"/>
-      <text x="468" y="124" font-size="12" font-weight="600" fill="#e2e8f0">03号机 · 张同学</text>
-      <text x="468" y="140" font-size="10" fill="#94a3b8">192.168.31.13 · 在线</text>
+      <rect x="272" y="106" width="236" height="160" rx="6" fill="#ffffff" stroke="#d6dade"/>
+      <rect x="278" y="112" width="224" height="96" rx="4" fill="url(#scr1)"/>
+      <rect x="286" y="120" width="160" height="80" rx="3" fill="#f8fafc"/>
+      <rect x="286" y="120" width="160" height="16" rx="3" fill="#e2e8f0"/>
+      <circle cx="295" cy="128" r="3" fill="#ef4444"/><circle cx="306" cy="128" r="3" fill="#f59e0b"/><circle cx="317" cy="128" r="3" fill="#22c55e"/>
+      <rect x="292" y="142" width="110" height="6" rx="3" fill="#cbd5e1"/>
+      <rect x="292" y="154" width="130" height="6" rx="3" fill="#cbd5e1"/>
+      <text x="278" y="224" font-weight="600">01号机 · 李同学</text>
+      <text x="278" y="240" font-size="11" fill="#8b95a1">192.168.31.11 · 在线</text>
     </g>
-
-    <!-- 卡片4：视频播放 -->
+    <!-- 卡片2 -->
     <g>
-      <rect x="12" y="224" width="215" height="150" rx="10" fill="#1e293b" stroke="#334155"/>
-      <rect x="18" y="230" width="203" height="92" rx="4" fill="url(#scrOrange)"/>
-      <rect x="28" y="240" width="183" height="72" rx="3" fill="#0b1220"/>
-      <polygon points="112,262 112,290 142,276" fill="#fbbf24"/>
-      <text x="18" y="284" font-size="12" font-weight="600" fill="#e2e8f0">04号机 · 陈同学</text>
-      <text x="18" y="300" font-size="10" fill="#94a3b8">192.168.31.14 · 在线</text>
-      <rect x="200" y="230" width="21" height="18" rx="4" fill="#0ea5e9"/><text x="207" y="243" font-size="10" fill="#0f172a">🔇</text>
+      <rect x="518" y="106" width="236" height="160" rx="6" fill="#ffffff" stroke="#d6dade"/>
+      <rect x="524" y="112" width="224" height="96" rx="4" fill="url(#scr2)"/>
+      <rect x="532" y="120" width="160" height="80" rx="3" fill="#0b1220"/>
+      <rect x="542" y="130" width="90" height="6" rx="3" fill="#38bdf8"/>
+      <rect x="542" y="142" width="120" height="6" rx="3" fill="#34d399"/>
+      <rect x="542" y="154" width="70" height="6" rx="3" fill="#f472b6"/>
+      <text x="524" y="224" font-weight="600">02号机 · 王同学</text>
+      <text x="524" y="240" font-size="11" fill="#8b95a1">192.168.31.12 · 在线</text>
+      <rect x="736" y="112" width="20" height="18" rx="4" fill="#f59e0b"/><text x="742" y="125" font-size="10" fill="#1e293b">✋</text>
     </g>
-
-    <!-- 卡片5：文档 -->
+    <!-- 卡片3 -->
     <g>
-      <rect x="237" y="224" width="215" height="150" rx="10" fill="#1e293b" stroke="#334155"/>
-      <rect x="243" y="230" width="203" height="92" rx="4" fill="url(#scrTeal)"/>
-      <rect x="253" y="240" width="183" height="72" rx="3" fill="#f8fafc"/>
-      <rect x="262" y="250" width="150" height="6" rx="3" fill="#cbd5e1"/>
-      <rect x="262" y="262" width="130" height="6" rx="3" fill="#cbd5e1"/>
-      <rect x="262" y="274" width="110" height="6" rx="3" fill="#cbd5e1"/>
-      <text x="243" y="284" font-size="12" font-weight="600" fill="#e2e8f0">05号机 · 刘同学</text>
-      <text x="243" y="300" font-size="10" fill="#94a3b8">192.168.31.15 · 离线</text>
-      <rect x="419" y="230" width="21" height="18" rx="4" fill="#475569"/><text x="424" y="243" font-size="10" fill="#e2e8f0">🔒</text>
+      <rect x="272" y="276" width="236" height="160" rx="6" fill="#ffffff" stroke="#d6dade"/>
+      <rect x="278" y="282" width="224" height="96" rx="4" fill="url(#scr3)"/>
+      <rect x="286" y="290" width="160" height="80" rx="3" fill="#f8fafc"/>
+      <rect x="294" y="338" width="18" height="18" rx="2" fill="#34d399"/>
+      <rect x="318" y="322" width="18" height="34" rx="2" fill="#10b981"/>
+      <rect x="342" y="306" width="18" height="50" rx="2" fill="#059669"/>
+      <text x="278" y="394" font-weight="600">03号机 · 张同学</text>
+      <text x="278" y="410" font-size="11" fill="#8b95a1">192.168.31.13 · 在线</text>
     </g>
-
-    <!-- 卡片6：游戏（被管控） -->
+    <!-- 卡片4 -->
     <g>
-      <rect x="462" y="224" width="215" height="150" rx="10" fill="#1e293b" stroke="#334155"/>
-      <rect x="468" y="230" width="203" height="92" rx="4" fill="url(#scrRed)"/>
-      <circle cx="530" cy="276" r="18" fill="#f472b6"/>
-      <circle cx="574" cy="262" r="12" fill="#fbbf24"/>
-      <rect x="494" y="288" width="90" height="14" rx="4" fill="#f8fafc"/>
-      <text x="468" y="284" font-size="12" font-weight="600" fill="#e2e8f0">06号机 · 赵同学</text>
-      <text x="468" y="300" font-size="10" fill="#94a3b8">192.168.31.16 · 在线</text>
-      <rect x="640" y="230" width="21" height="18" rx="4" fill="#dc2626"/><text x="645" y="243" font-size="10" fill="#fff">⬛</text>
+      <rect x="518" y="276" width="236" height="160" rx="6" fill="#ffffff" stroke="#d6dade"/>
+      <rect x="524" y="282" width="224" height="96" rx="4" fill="url(#scr4)"/>
+      <rect x="532" y="290" width="160" height="80" rx="3" fill="#0b1220"/>
+      <polygon points="596,316 596,344 626,330" fill="#fbbf24"/>
+      <text x="524" y="394" font-weight="600">04号机 · 陈同学</text>
+      <text x="524" y="410" font-size="11" fill="#8b95a1">192.168.31.14 · 在线</text>
+      <rect x="736" y="282" width="20" height="18" rx="4" fill="#0ea5e9"/><text x="742" y="295" font-size="10" fill="#0f172a">🔇</text>
     </g>
   </g>
 
   <!-- 右侧消息面板 -->
-  <rect x="700" y="48" width="300" height="512" fill="#1e293b"/>
-  <line x1="700" y1="48" x2="700" y2="560" stroke="#334155"/>
-  <text x="716" y="76" font-size="14" fill="#94a3b8">消息 / 事件</text>
-  <g font-size="11" fill="#cbd5e1">
-    <rect x="712" y="88" width="276" height="40" rx="6" fill="#0f172a"/>
-    <text x="722" y="105" fill="#94a3b8">10:02:11</text>
-    <text x="722" y="120">02号机 · 王同学: 举手提问</text>
-    <rect x="712" y="136" width="276" height="40" rx="6" fill="#0f172a"/>
-    <text x="722" y="153" fill="#94a3b8">10:02:40</text>
-    <text x="722" y="168">03号机 · 张同学: 已提交作业 练习.docx</text>
-    <rect x="712" y="184" width="276" height="40" rx="6" fill="#0f172a"/>
-    <text x="722" y="201" fill="#94a3b8">10:03:05</text>
-    <text x="722" y="216">06号机: 【管控】检测到从U盘运行游戏，已关闭</text>
+  <rect x="760" y="96" width="240" height="440" fill="#ffffff"/>
+  <line x1="760" y1="96" x2="760" y2="536" stroke="#d3dbe4"/>
+  <rect x="760" y="96" width="240" height="28" fill="#f4f7fa"/>
+  <text x="770" y="115" font-size="13" fill="#2f6fb2">消息 / 事件</text>
+  <g font-size="11" fill="#1f2937">
+    <rect x="768" y="132" width="224" height="40" rx="4" fill="#f2f5f8" stroke="#e5e9ed"/>
+    <text x="776" y="149" fill="#8b95a1">10:02:11</text><text x="776" y="164">02号机 · 王同学: 举手提问</text>
+    <rect x="768" y="178" width="224" height="40" rx="4" fill="#f2f5f8" stroke="#e5e9ed"/>
+    <text x="776" y="195" fill="#8b95a1">10:02:40</text><text x="776" y="210">03号机: 已提交作业 练习.docx</text>
+    <rect x="768" y="224" width="224" height="40" rx="4" fill="#f2f5f8" stroke="#e5e9ed"/>
+    <text x="776" y="241" fill="#8b95a1">10:03:05</text><text x="776" y="256">06号机: 【管控】检测到从U盘运行游戏</text>
   </g>
+
+  <!-- 状态栏 -->
+  <rect y="536" width="1000" height="24" fill="#e9eaec"/>
+  <line x1="0" y1="536" x2="1000" y2="536" stroke="#cfd4d9"/>
+  <text x="10" y="552" font-size="12" fill="#333333">在线 6 / 共 6 台</text>
+  <text x="990" y="552" font-size="12" fill="#333333" text-anchor="end">双击缩略图进入远程操控 · 选中后可用工具栏批量操作</text>
 </svg>

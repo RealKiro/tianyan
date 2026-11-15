@@ -73,10 +73,54 @@ function render() {
     card.ondblclick = () => openFull(id);
     grid.appendChild(card);
   }
+  renderList();
+  updateStatusBar();
 }
 
 function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function renderList() {
+  const list = $("studentList");
+  list.innerHTML = "";
+  const groups = {};
+  for (const st of roster.values()) {
+    const g = st.group || "默认组";
+    (groups[g] = groups[g] || []).push(st);
+  }
+  for (const [group, arr] of Object.entries(groups)) {
+    const gh = document.createElement("div");
+    gh.className = "list-group";
+    gh.textContent = group + " (" + arr.length + ")";
+    list.appendChild(gh);
+    for (const st of arr) {
+      const row = document.createElement("div");
+      row.className = "list-row" + (selected.has(st.id) ? " selected" : "") + (st.online ? "" : " offline");
+      row.innerHTML =
+        '<span class="dot ' + (st.online ? "on" : "off") + '">' + (st.online ? "●" : "○") + "</span>" +
+        '<span class="lname">' + esc(st.name || st.id) + "</span>" +
+        '<span class="lip">' + esc(st.ip || "") + "</span>" +
+        (st.raising ? '<span class="chip">✋</span>' : "") +
+        (st.muted ? '<span class="chip">🔇</span>' : "");
+      row.onclick = (e) => {
+        if (e.ctrlKey || e.metaKey) {
+          if (selected.has(st.id)) selected.delete(st.id); else selected.add(st.id);
+        } else {
+          selected = new Set([st.id]);
+        }
+        render();
+      };
+      row.ondblclick = () => openFull(st.id);
+      list.appendChild(row);
+    }
+  }
+}
+
+function updateStatusBar() {
+  let online = 0;
+  for (const st of roster.values()) if (st.online) online++;
+  $("statusText").textContent = "在线 " + online + " / 共 " + roster.size + " 台";
 }
 
 function addMessage(text) {

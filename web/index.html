@@ -3,39 +3,71 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>天眼 · 教师端</title>
+<title>天眼 · 电子教室 教师端</title>
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-<header class="toolbar">
-  <div class="brand"><span class="logo">天眼</span><span class="sub">电子教室 · 教师端</span></div>
-  <div class="tools">
-    <button data-cmd="muteAll">🔇 全体静音</button>
-    <button data-cmd="unmuteAll">🔊 取消静音</button>
-    <button data-cmd="blackAll">⬛ 全体黑屏</button>
-    <button data-cmd="unblackAll">🖥️ 解除黑屏</button>
-    <button data-cmd="lockAll">🔒 全体锁定</button>
-    <button data-cmd="openUrl">🌐 打开网页</button>
-    <button data-cmd="openApp">📦 打开应用</button>
-    <button data-cmd="closeApp">❌ 关闭应用</button>
-    <button data-cmd="closeWindow">🚫 关闭网页</button>
-    <button data-cmd="shutdown">⏻ 关机</button>
-    <button data-cmd="reboot">🔄 重启</button>
-    <button data-cmd="sendFile">📁 发送文件</button>
-    <button data-cmd="blocklist">🛡️ 黑白名单</button>
-    <button data-cmd="exportCsv">⬇️ 导出CSV</button>
-    <button data-cmd="importData">⬆️ 导入</button>
-    <button data-cmd="wake">🔌 远程开机</button>
-  </div>
+
+<header class="titlebar">
+  <span class="logo">天眼</span>
+  <span class="title">电子教室 · 教师端</span>
+  <span class="spacer"></span>
+  <span class="win-btns">— □ ✕</span>
 </header>
 
+<nav class="menubar">
+  <span>文件(F)</span><span>视图(V)</span><span>远程(R)</span><span>控制(C)</span><span>系统(S)</span><span>工具(T)</span><span>帮助(H)</span>
+</nav>
+
+<div class="toolbar">
+  <span class="grp">声音</span>
+  <button data-cmd="muteAll">🔇 全体静音</button>
+  <button data-cmd="unmuteAll">🔊 取消静音</button>
+  <span class="sep"></span>
+  <span class="grp">屏幕</span>
+  <button data-cmd="blackAll">⬛ 全体黑屏</button>
+  <button data-cmd="unblackAll">🖥️ 解除黑屏</button>
+  <button data-cmd="lockAll">🔒 全体锁定</button>
+  <span class="sep"></span>
+  <span class="grp">程序</span>
+  <button data-cmd="openUrl">🌐 打开网页</button>
+  <button data-cmd="openApp">📦 打开应用</button>
+  <button data-cmd="closeApp">❌ 关闭应用</button>
+  <button data-cmd="closeWindow">🚫 关闭网页</button>
+  <span class="sep"></span>
+  <span class="grp">电源</span>
+  <button data-cmd="shutdown">⏻ 关机</button>
+  <button data-cmd="reboot">🔄 重启</button>
+  <button data-cmd="wake">🔌 远程开机</button>
+  <span class="sep"></span>
+  <span class="grp">资源</span>
+  <button data-cmd="sendFile">📁 发送文件</button>
+  <button data-cmd="blocklist">🛡️ 黑白名单</button>
+  <span class="sep"></span>
+  <span class="grp">数据</span>
+  <button data-cmd="exportCsv">⬇️ 导出CSV</button>
+  <button data-cmd="importData">⬆️ 导入</button>
+</div>
+
 <div class="layout">
+  <aside class="sidebar">
+    <div class="side-title">学生机列表</div>
+    <div id="studentList"></div>
+  </aside>
+
   <main id="grid" class="grid"></main>
+
   <aside class="panel">
     <h2>消息 / 事件</h2>
     <div id="messages" class="messages"></div>
   </aside>
 </div>
+
+<footer class="statusbar">
+  <span id="statusText">在线 0 / 共 0 台</span>
+  <span class="spacer"></span>
+  <span>双击缩略图进入远程操控 · 选中学生后可用工具栏批量操作</span>
+</footer>
 
 <div id="full" class="full hidden">
   <div class="full-tools">
