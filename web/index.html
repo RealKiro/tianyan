@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>天眼 · 教师端</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="toolbar">
+  <div class="brand"><span class="logo">天眼</span><span class="sub">电子教室 · 教师端</span></div>
+  <div class="tools">
+    <button data-cmd="muteAll">🔇 全体静音</button>
+    <button data-cmd="unmuteAll">🔊 取消静音</button>
+    <button data-cmd="blackAll">⬛ 全体黑屏</button>
+    <button data-cmd="unblackAll">🖥️ 解除黑屏</button>
+    <button data-cmd="lockAll">🔒 全体锁定</button>
+    <button data-cmd="openUrl">🌐 打开网页</button>
+    <button data-cmd="openApp">📦 打开应用</button>
+    <button data-cmd="closeApp">❌ 关闭应用</button>
+    <button data-cmd="closeWindow">🚫 关闭网页</button>
+    <button data-cmd="shutdown">⏻ 关机</button>
+    <button data-cmd="reboot">🔄 重启</button>
+    <button data-cmd="sendFile">📁 发送文件</button>
+    <button data-cmd="blocklist">🛡️ 黑白名单</button>
+    <button data-cmd="exportCsv">⬇️ 导出CSV</button>
+    <button data-cmd="importData">⬆️ 导入</button>
+    <button data-cmd="wake">🔌 远程开机</button>
+  </div>
+</header>
+
+<div class="layout">
+  <main id="grid" class="grid"></main>
+  <aside class="panel">
+    <h2>消息 / 事件</h2>
+    <div id="messages" class="messages"></div>
+  </aside>
+</div>
+
+<div id="full" class="full hidden">
+  <div class="full-tools">
+    <span id="fullTitle"></span>
+    <button id="fullControl">🖱️ 控制: 关</button>
+    <button id="fullBlack">⬛ 黑屏</button>
+    <button id="fullMute">🔇 静音</button>
+    <button id="fullLock">🔒 锁定</button>
+    <button id="fullShutdown">⏻ 关机</button>
+    <button id="fullOpen">🌐 打开</button>
+    <button id="fullMsg">💬 发消息</button>
+    <button id="fullClose">✖ 关闭</button>
+  </div>
+  <img id="fullImg" draggable="false" alt="学生屏幕">
+</div>
+
+<div id="modal" class="modal hidden">
+  <div class="modal-card">
+    <h3 id="modalTitle">设置</h3>
+    <div id="modalBody"></div>
+    <div class="modal-actions">
+      <button id="modalOk" class="primary">确定</button>
+      <button id="modalCancel">取消</button>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="fileInput" hidden>
+<input type="file" id="importFile" hidden>
+<script src="/app.js"></script>
+</body>
+</html>

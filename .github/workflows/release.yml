@@ -1,0 +1,49 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: windows-amd64
+          - os: ubuntu-latest
+            name: linux-amd64
+          - os: macos-latest
+            name: darwin-amd64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Install Linux X11 dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libx11-dev libxext-dev libxrandr-dev
+      - name: Build
+        shell: bash
+        run: |
+          go build -o teacher ./cmd/teacher
+          go build -o student ./cmd/student
+          mkdir -p pkg
+          if [ -f teacher.exe ]; then
+            cp teacher.exe pkg/tianyan-teacher-${{ matrix.name }}.exe
+            cp student.exe pkg/tianyan-student-${{ matrix.name }}.exe
+          else
+            cp teacher pkg/tianyan-teacher-${{ matrix.name }}
+            cp student pkg/tianyan-student-${{ matrix.name }}
+          fi
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: pkg/*
+          generate_release_notes: true

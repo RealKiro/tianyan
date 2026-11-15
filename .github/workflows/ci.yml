@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test ./...
+      - name: Build
+        run: go build ./...
+
+  build:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: windows-amd64
+          - os: ubuntu-latest
+            name: linux-amd64
+          - os: macos-latest
+            name: darwin-amd64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Install Linux X11 dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libx11-dev libxext-dev libxrandr-dev
+      - name: Build teacher and student
+        shell: bash
+        run: |
+          go build -o teacher ./cmd/teacher
+          go build -o student ./cmd/student
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tianyan-${{ matrix.name }}
+          path: |
+            teacher
+            student
+            teacher.exe
+            student.exe

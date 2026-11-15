@@ -1,0 +1,10 @@
+# 构建产物
+/dist/
+/teacher
+/student
+/teacher.exe
+/student.exe
+*.exe
+
+# 本地数据
+*.tianyan.bak
