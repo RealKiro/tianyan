@@ -66,8 +66,6 @@ type Server struct {
 
 	demo    demoState
 	pending []string // student ids with an unanswered broadcast request
-
-	lastFullscreen bool // remembered demo mode for the docked-bar broadcast toggle
 }
 
 // demoState tracks the current screen broadcast (Veyon's demo feature):
@@ -577,7 +575,6 @@ func (s *Server) sendInput(id string, in protocol.Input) {
 // mode also locks student input on the receiving machines.
 func (s *Server) startDemo(source string, fullscreen bool) {
 	s.stopDemo() // switching source/mode: tear down any current broadcast
-	s.lastFullscreen = fullscreen
 
 	s.demo.mu.Lock()
 	s.demo.active = true
@@ -869,8 +866,22 @@ func (s *Server) QuickStatus() string {
 		}
 	}
 	nPending := len(s.pending)
+	s.demo.mu.Lock()
+	demoActive, demoFullscreen, demoSource := s.demo.active, s.demo.fullscreen, s.demo.source
+	s.demo.mu.Unlock()
 	s.mu.Unlock()
 	line := fmt.Sprintf("在线 %d/%d", online, total)
+	if demoActive {
+		// The island button cycles fullscreen -> window, so the teacher can
+		// see what the next press would switch to.
+		if demoSource != "" {
+			line += " · 正在转播学生屏幕"
+		} else if demoFullscreen {
+			line += " · 全屏广播中（点击切窗口）"
+		} else {
+			line += " · 窗口广播中（到控制台停止）"
+		}
+	}
 	if raising > 0 {
 		line += fmt.Sprintf(" · %d 人举手", raising)
 	}
@@ -894,14 +905,20 @@ func (s *Server) QuickCommand(action string) {
 		}
 		_ = exec.Command("cmd", "/C", "start", "", url).Start()
 	case "broadcast":
+		// Island broadcast button cycles modes but never stops the demo:
+		// off -> fullscreen -> window -> (stays; stop from the web console).
 		s.demo.mu.Lock()
-		active := s.demo.active
+		active, fullscreen, source := s.demo.active, s.demo.fullscreen, s.demo.source
 		s.demo.mu.Unlock()
-		if active {
-			s.stopDemo()
+		if !active {
+			s.startDemo("", true) // default: fullscreen teacher-screen demo
 			return
 		}
-		s.startDemo("", s.lastFullscreen)
+		if source == "" && fullscreen {
+			s.startDemo("", false) // fullscreen -> window
+		}
+		// Window mode (or a student relay) keeps running; stopping is done
+		// from the web console's broadcast dialog.
 	case "black", "lock", "lockscreen":
 		// Merged lock-screen toggle: if any online student is locked up,
 		// lift every lock; otherwise lock all screens with the default text.
