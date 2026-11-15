@@ -55,6 +55,7 @@ func main() {
 	flag.DurationVar(&cfg.OfflineTimeout, "offline-timeout", cfg.OfflineTimeout, "断联判定超时")
 	flag.BoolVar(&cfg.NetDownReboot, "netdown-reboot", cfg.NetDownReboot, "检测到网线断开（物理链路断）时自动锁屏并倒计时重启")
 	flag.DurationVar(&cfg.NetDownTimeout, "netdown-timeout", cfg.NetDownTimeout, "网线断开判定时长")
+	flag.DurationVar(&cfg.ReconnectRestart, "reconnect-restart", cfg.ReconnectRestart, "与教师端失联后持续重连失败此时长则自动重启客户端进程（0=禁用）")
 	flag.Parse()
 
 	// 计划任务以 -background 启动学生端：转入无控制台窗口的后台进程。
@@ -193,6 +194,16 @@ func main() {
 
 	bar := startStudentBar(c, *noToolbar)
 	startTrayIcon(c, bar, *noTray)
+
+	// 失联自动重建：重连持续失败时退出当前进程（守护进程拉起或自拉起）。
+	c.OnRestartClient = func() {
+		log.Println("student: restarting client process to rebuild the connection")
+		c.Shutdown()
+		if !*daemon {
+			_ = spawnHidden(restartArgs(os.Args[1:]))
+		}
+		os.Exit(0)
+	}
 
 	go c.Run()
 	sig := make(chan os.Signal, 1)

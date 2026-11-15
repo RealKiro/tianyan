@@ -39,34 +39,36 @@ var errNotConnected = errors.New("student: not connected to teacher")
 
 // Config configures a student client.
 type Config struct {
-	Name            string
-	StudentID       string
-	Group           string
-	TeacherIP       string // empty = auto-discover
-	ServerPort      int    // teacher control TCP port
-	DataDir         string
-	AuthKey         string        // shared auth key (empty = no auth)
-	VNCPort         int           // VNC (RFB) listener port, 0 = disabled
-	DenyFeatures    string        // comma-separated feature groups to disable: audio,screen,program,power,rules,control,message
-	AutoMute        bool          // mute when the teacher comes online
-	RebootOnOffline bool          // reboot when teacher heartbeat is lost
-	OfflineTimeout  time.Duration // how long to wait before declaring offline
-	NetDownReboot   bool          // lock screen + reboot when the network link goes down
-	NetDownTimeout  time.Duration // link-down duration before triggering NetDownReboot
+	Name             string
+	StudentID        string
+	Group            string
+	TeacherIP        string // empty = auto-discover
+	ServerPort       int    // teacher control TCP port
+	DataDir          string
+	AuthKey          string        // shared auth key (empty = no auth)
+	VNCPort          int           // VNC (RFB) listener port, 0 = disabled
+	DenyFeatures     string        // comma-separated feature groups to disable: audio,screen,program,power,rules,control,message
+	AutoMute         bool          // mute when the teacher comes online
+	RebootOnOffline  bool          // reboot when teacher heartbeat is lost
+	OfflineTimeout   time.Duration // how long to wait before declaring offline
+	NetDownReboot    bool          // lock screen + reboot when the network link goes down
+	NetDownTimeout   time.Duration // link-down duration before triggering NetDownReboot
+	ReconnectRestart time.Duration // restart the client process after failing to reconnect this long (0 = off)
 }
 
 // DefaultConfig returns a config with sensible defaults.
 func DefaultConfig() Config {
 	return Config{
-		Name:            hostname(),
-		ServerPort:      5555,
-		DataDir:         filepath.Join(os.TempDir(), "tianyan"),
-		VNCPort:         5900,
-		AutoMute:        true,
-		RebootOnOffline: false,
-		OfflineTimeout:  30 * time.Second,
-		NetDownReboot:   true,
-		NetDownTimeout:  3 * time.Second,
+		Name:             hostname(),
+		ServerPort:       5555,
+		DataDir:          filepath.Join(os.TempDir(), "tianyan"),
+		VNCPort:          5900,
+		AutoMute:         true,
+		RebootOnOffline:  false,
+		OfflineTimeout:   30 * time.Second,
+		NetDownReboot:    true,
+		NetDownTimeout:   3 * time.Second,
+		ReconnectRestart: 5 * time.Minute,
 	}
 }
 
@@ -104,6 +106,12 @@ type Client struct {
 	lastRecv      time.Time
 	pendingReboot bool
 
+	// reconnect tracking: only a client that has been connected before may
+	// restart itself after losing the teacher (prevents boot-time restart
+	// loops when the teacher machine is simply switched off).
+	everConnected  bool
+	lastDisconnect time.Time
+
 	// Own-screen broadcast request state machine: "" (none) → "pending" →
 	// "approved" (teacher started the relay) / "denied" (teacher refused or
 	// stopped the broadcast).
@@ -116,10 +124,11 @@ type Client struct {
 	lastTeacherMsg string
 
 	// Hooks used by the docked toolbar (see cmd/student/main.go).
-	OnUpdate    func() // any user-visible state changed; refresh the bar text
-	OnDemoing   func(active bool)
-	OnOverlay   func(on bool) // lock screen (black screen / input lock) active
-	OnConnState func(online bool)
+	OnUpdate        func() // any user-visible state changed; refresh the bar text
+	OnDemoing       func(active bool)
+	OnOverlay       func(on bool) // lock screen (black screen / input lock) active
+	OnConnState     func(online bool)
+	OnRestartClient func() // reconnect watchdog: rebuild the client process
 }
 
 // New creates a student client.
@@ -171,6 +180,7 @@ func (c *Client) Run() {
 	go c.connectLoop()
 	go c.offlineMonitor()
 	go c.netWatch()
+	go c.reconnectWatch()
 	go c.enforcer.AppLoop(c.stopCh, 2*time.Second)
 	go c.startVNC()
 	<-c.stopCh
@@ -328,6 +338,8 @@ func (c *Client) runConnection(conn net.Conn) {
 	c.setBroadcastState("", "与教师断开连接")
 	c.mu.Lock()
 	c.conn = nil
+	c.everConnected = true
+	c.lastDisconnect = time.Now()
 	c.fullWanted = false
 	c.mu.Unlock()
 	_ = conn.Close()
@@ -499,17 +511,17 @@ func (c *Client) handleMessage(msg protocol.Message) {
 	case "black":
 		var b protocol.Black
 		_ = json.Unmarshal(msg.Data, &b)
-		c.sendAck(msg.ID, c.applyLockScreen(b.On, b.Text, ""))
+		c.sendAck(msg.ID, c.applyLockScreen(b.On, b.Text, "", ""))
 
 	case "lock_input":
 		var l protocol.LockInput
 		_ = json.Unmarshal(msg.Data, &l)
-		c.sendAck(msg.ID, c.applyLockScreen(l.On, "输入已锁定，请保持安静", ""))
+		c.sendAck(msg.ID, c.applyLockScreen(l.On, "输入已锁定，请保持安静", "", ""))
 
 	case "lockscreen":
 		var ls protocol.LockScreen
 		_ = json.Unmarshal(msg.Data, &ls)
-		c.sendAck(msg.ID, c.applyLockScreen(ls.On, ls.Text, ls.Wallpaper))
+		c.sendAck(msg.ID, c.applyLockScreen(ls.On, ls.Text, ls.Wallpaper, ls.Color))
 
 	case "demo":
 		var d protocol.Demo
@@ -705,13 +717,14 @@ func (c *Client) notifyDemoing(active bool) {
 // applyLockScreen shows/hides the merged lock overlay and keeps the
 // blacked/locked status in step (legacy status fields report both true
 // while the lock screen is up). The wallpaper must be a bare file name;
-// it is resolved inside the student data directory.
-func (c *Client) applyLockScreen(on bool, text, image string) error {
+// it is resolved inside the student data directory. Color names the
+// message color ("" = white).
+func (c *Client) applyLockScreen(on bool, text, image, color string) error {
 	imageName := ""
 	if image != "" {
 		imageName = filepath.Base(image) // no path traversal
 	}
-	if err := c.ctrl.LockScreen(on, text, filepath.Join(c.cfg.DataDir, imageName)); err != nil {
+	if err := c.ctrl.LockScreen(on, text, filepath.Join(c.cfg.DataDir, imageName), color); err != nil {
 		return err
 	}
 	c.mu.Lock()
@@ -1026,7 +1039,7 @@ func (c *Client) netWatch() {
 			if pending {
 				// Link recovered: abort the scheduled reboot and unlock.
 				_ = c.ctrl.Power("reboot", 0, true)
-				_ = c.applyLockScreen(false, "", "")
+				_ = c.applyLockScreen(false, "", "", "")
 				pending = false
 			}
 			downSince = time.Time{}
@@ -1046,11 +1059,57 @@ func (c *Client) netWatch() {
 		}
 		if !pending {
 			pending = true
-			_ = c.applyLockScreen(true, "网络已断开，系统将在 60 秒后自动重启", "")
+			_ = c.applyLockScreen(true, "网络已断开，系统将在 60 秒后自动重启", "", "Red")
 			// The OS reboot countdown dialog doubles as the warning prompt.
 			_ = c.ctrl.Power("reboot", 60, false)
 		}
 	}
+}
+
+// reconnectWatch handles losing the teacher while the network link is
+// still fine (server closed, network glitch on the teacher side...): the
+// connect loop keeps retrying, and if the client fails to reconnect within
+// ReconnectRestart it rebuilds the client process (guardian restart or
+// self-respawn) instead of staying broken forever. Only a client that has
+// connected at least once may restart this way, so a boot before the
+// teacher is switched on never causes a restart loop.
+func (c *Client) reconnectWatch() {
+	t := time.NewTicker(2 * time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-c.stopCh:
+			return
+		case <-t.C:
+		}
+		if c.cfg.ReconnectRestart <= 0 {
+			return
+		}
+		c.mu.Lock()
+		conn := c.conn
+		ever := c.everConnected
+		since := c.lastDisconnect
+		c.mu.Unlock()
+		if conn != nil || !ever {
+			continue
+		}
+		if time.Since(since) < c.cfg.ReconnectRestart {
+			continue
+		}
+		log.Printf("student: failed to reconnect for %v; restarting client process", c.cfg.ReconnectRestart)
+		if c.OnRestartClient != nil {
+			go c.OnRestartClient()
+		}
+		return
+	}
+}
+
+// Shutdown stops the client and releases OS resources (lock overlay,
+// audio, dialogs). Called before the process self-restarts.
+func (c *Client) Shutdown() {
+	c.Close()
+	time.Sleep(300 * time.Millisecond) // let Run's ctrl cleanup finish
+	_ = c.ctrl.Close()
 }
 
 // networkLinkUp reports whether any non-loopback interface is up with a

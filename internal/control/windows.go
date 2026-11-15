@@ -191,7 +191,7 @@ func (a *windowsAudio) Close() {
 }
 
 const overlayScript = `
-param([string]$Text = '', [string]$Image = '')
+param([string]$Text = '', [string]$Image = '', [string]$Color = '')
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 $form = New-Object System.Windows.Forms.Form
@@ -211,7 +211,11 @@ if ($Image -ne '' -and (Test-Path $Image)) {
 }
 $label = New-Object System.Windows.Forms.Label
 $label.Text = $Text
-$label.ForeColor = [System.Drawing.Color]::White
+if ($Color -ne '') {
+  $label.ForeColor = [System.Drawing.Color]::FromName($Color)
+} else {
+  $label.ForeColor = [System.Drawing.Color]::White
+}
 $label.BackColor = [System.Drawing.Color]::Transparent
 $label.Font = New-Object System.Drawing.Font('Microsoft YaHei', 30, [System.Drawing.FontStyle]::Bold)
 $label.Dock = 'Fill'
@@ -233,6 +237,7 @@ type winController struct {
 	lockOn    bool
 	lockText  string
 	lockImage string
+	lockColor string
 }
 
 // New returns the Windows controller.
@@ -338,26 +343,28 @@ func (c *winController) Volume() (int, error) {
 // window with a custom message and/or wallpaper image that swallows
 // keyboard input and covers the desktop (input lock). Each "on" command
 // carries the full intent: an empty text falls back to the default message
-// and an empty image means a plain black background.
-func (c *winController) LockScreen(on bool, text, image string) error {
+// (white), an empty image means a plain black background, and an empty
+// color means the default white message text.
+func (c *winController) LockScreen(on bool, text, image, color string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.lockOn = on
 	if on {
 		c.lockText = text
 		c.lockImage = image
+		c.lockColor = color
 	}
 	return c.syncOverlayLocked()
 }
 
 // BlackScreen is the legacy plain-black overlay (kept for compatibility).
 func (c *winController) BlackScreen(on bool, text string) error {
-	return c.LockScreen(on, text, "")
+	return c.LockScreen(on, text, "", "")
 }
 
 // LockInput is the legacy input-only lock (kept for compatibility).
 func (c *winController) LockInput(on bool) error {
-	return c.LockScreen(on, "输入已锁定，请保持安静", "")
+	return c.LockScreen(on, "输入已锁定，请保持安静", "", "")
 }
 
 func (c *winController) syncOverlayLocked() error {
@@ -366,13 +373,13 @@ func (c *winController) syncOverlayLocked() error {
 		if text == "" {
 			text = "请保持安静"
 		}
-		return c.ensureOverlay(text, c.lockImage)
+		return c.ensureOverlay(text, c.lockImage, c.lockColor)
 	}
 	c.stopOverlay()
 	return nil
 }
 
-func (c *winController) ensureOverlay(text, image string) error {
+func (c *winController) ensureOverlay(text, image, color string) error {
 	c.stopOverlay()
 	f, err := os.CreateTemp("", "tianyan_overlay_*.ps1")
 	if err != nil {
@@ -388,6 +395,9 @@ func (c *winController) ensureOverlay(text, image string) error {
 	args := []string{"-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", scriptPath, "-Text", text}
 	if image != "" {
 		args = append(args, "-Image", image)
+	}
+	if color != "" {
+		args = append(args, "-Color", color)
 	}
 	cmd := exec.Command("powershell", args...)
 	if err := cmd.Start(); err != nil {

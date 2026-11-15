@@ -157,6 +157,7 @@ type LockScreen struct {
 	On        bool   `json:"on"`
 	Text      string `json:"text,omitempty"`
 	Wallpaper string `json:"wallpaper,omitempty"`
+	Color     string `json:"color,omitempty"` // message color, e.g. "Red"
 }
 
 // LockInput toggles input blocking on the student machine.
