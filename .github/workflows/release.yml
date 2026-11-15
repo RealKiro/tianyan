@@ -1,14 +1,16 @@
 name: Release
 
-# Multi-platform packaging: every entry builds teacher + student install
-# packages and publishes them to the GitHub Release for the pushed tag.
-# Windows zip; Linux/UOS/Kylin deb + tar.gz; macOS .app tar.gz;
-# Android = experimental Termux binary.
+# Multi-platform packaging in standard installer formats, published to the
+# GitHub Release for the pushed tag:
+#   Windows            exe 安装程序（NSIS；学生端装完自动注册开机自启）+ 便携 zip
+#   Linux/UOS/麒麟     deb（登录自启桌面入口 + systemd 单元）+ tar.gz
+#   macOS              dmg（教师端 + 学生端 .app，ad-hoc 签名）
+#   Android            apk（gomobile 实验包；失败时回退 Termux tar.gz）
 #
 # iOS/iPadOS and HarmonyOS have no viable installable package for a Go
 # desktop-control architecture (no App Store distribution without signing,
 # sandbox forbids screen capture/input injection, no Go toolchain for
-# ArkTS) — see README "平台支持".
+# ArkTS) — see README "平台支持与安装包".
 
 on:
   push:
@@ -25,7 +27,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Windows（教师端 + 学生端，zip 安装包）
+          # Windows（exe 安装程序 + 便携 zip）
           - { os: windows-latest, name: windows-amd64, goos: windows, goarch: amd64, cgo: "1" }
           # Linux 通用（deb + tar.gz；CGO 关闭 → 静态二进制，免 glibc 依赖）
           - { os: ubuntu-latest, name: linux-amd64, goos: linux, goarch: amd64, cgo: "0", deb: "1", debarch: amd64 }
@@ -35,11 +37,11 @@ jobs:
           - { os: ubuntu-latest, name: uos-mips64el, goos: linux, goarch: mips64le, cgo: "0" }
           # 麒麟操作系统（deb；arm64 机型如飞腾/鲲鹏）
           - { os: ubuntu-latest, name: kylin-arm64, goos: linux, goarch: arm64, cgo: "0", deb: "1", debarch: arm64, tag: kylin }
-          # macOS（.app 包，原生 cgo 编译；Intel + Apple Silicon）
-          - { os: macos-latest, name: darwin-arm64, goos: darwin, goarch: arm64, cgo: "1" }
-          - { os: macos-latest, name: darwin-amd64, goos: darwin, goarch: amd64, cgo: "1" }
-          # Android（实验性：Termux 运行，无屏幕采集/注入）
-          - { os: ubuntu-latest, name: android-arm64, goos: android, goarch: arm64, cgo: "0", studentonly: "1" }
+          # macOS（dmg；原生 cgo 编译；Intel + Apple Silicon）
+          - { os: macos-latest, name: darwin-arm64, goos: darwin, goarch: arm64, cgo: "1", dmg: "1" }
+          - { os: macos-latest, name: darwin-amd64, goos: darwin, goarch: amd64, cgo: "1", dmg: "1" }
+          # Android（apk 实验；失败回退 Termux tar.gz）
+          - { os: ubuntu-latest, name: android-arm64, goos: android, goarch: arm64, cgo: "0", apk: "1" }
     runs-on: ${{ matrix.os }}
     env:
       VERSION: ${{ github.ref_name }}
@@ -59,29 +61,54 @@ jobs:
           chmod +x scripts/*.sh
           scripts/dist.sh "${{ matrix.name }}" "${{ matrix.goos }}" "${{ matrix.debarch || '' }}"
 
-      - name: Remove teacher binary (student-only target)
-        if: matrix.studentonly == '1'
-        shell: bash
-        run: rm -f dist/*/bin/teacher dist/*/bin/teacher.exe
-
-      - name: macOS ad-hoc sign
-        if: runner.os == 'macOS'
-        run: |
-          for app in dist/*/TianYan-*.app; do
-            codesign --force -s - "$app" || true
-          done
-
-      - name: Pack tar.gz
-        shell: bash
-        run: |
-          cd dist
-          tar czf "tianyan-${{ matrix.name }}.tar.gz" "${{ matrix.name }}"
-
-      - name: Pack Windows zip
+      - name: Windows exe installers (NSIS)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Compress-Archive -Path "dist/${{ matrix.name }}" -DestinationPath "dist/tianyan-${{ matrix.name }}.zip"
+          if (-not (Get-Command makensis -ErrorAction SilentlyContinue)) {
+            choco install nsis -y --no-progress
+          }
+          makensis -V2 `
+            -DSRCBIN="dist/${{ matrix.name }}/bin" `
+            -DSRCDOCS="dist/${{ matrix.name }}/docs" `
+            -DOUTFILE="dist/tianyan-student-setup.exe" `
+            packaging/windows/student.nsi
+          makensis -V2 `
+            -DSRCBIN="dist/${{ matrix.name }}/bin" `
+            -DSRCDOCS="dist/${{ matrix.name }}/docs" `
+            -DOUTFILE="dist/tianyan-teacher-setup.exe" `
+            packaging/windows/teacher.nsi
+
+      - name: macOS dmg
+        if: matrix.dmg == '1'
+        shell: bash
+        run: |
+          mkdir dmg-staging
+          cp -R dist/${{ matrix.name }}/TianYan-Student.app dmg-staging/
+          cp -R dist/${{ matrix.name }}/TianYan-Teacher.app dmg-staging/
+          ln -s /Applications dmg-staging/Applications
+          hdiutil create -volname "TianYan" -srcfolder dmg-staging \
+            -ov -format UDZO -o "dist/tianyan-macos-${{ matrix.goarch }}.dmg"
+
+      - name: Android apk (gomobile, experimental)
+        if: matrix.apk == '1'
+        id: apk
+        continue-on-error: true
+        shell: bash
+        run: |
+          export ANDROID_NDK_HOME="$(ls -d "$ANDROID_HOME"/ndk/* 2>/dev/null | head -1)"
+          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME"
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          "$HOME/go/bin/gomobile" init
+          "$HOME/go/bin/gomobile" build -target=android -androidapi 24 \
+            -o "dist/tianyan-student-android.apk" ./cmd/student
+
+      - name: Android fallback tar.gz (Termux)
+        if: matrix.apk == '1' && steps.apk.outcome != 'success'
+        shell: bash
+        run: |
+          cd dist
+          tar czf "tianyan-android-arm64.tar.gz" "${{ matrix.name }}"
 
       - name: Build deb (UOS / Kylin / Linux)
         if: matrix.deb == '1'
@@ -93,14 +120,29 @@ jobs:
                dist/tianyan-student-kylin_${VERSION#v}_${{ matrix.debarch }}.deb
           fi
 
+      - name: Pack portable tar.gz / zip
+        shell: bash
+        run: |
+          cd dist
+          tar czf "tianyan-${{ matrix.name }}.tar.gz" "${{ matrix.name }}"
+
+      - name: Pack Windows zip
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "dist/${{ matrix.name }}" -DestinationPath "dist/tianyan-${{ matrix.name }}.zip"
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: pkg-${{ matrix.name }}
           path: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.apk
+            dist/*.deb
             dist/*.tar.gz
             dist/*.zip
-            dist/*.deb
           if-no-files-found: error
           retention-days: 3
 
@@ -117,9 +159,8 @@ jobs:
         shell: bash
         run: |
           mkdir -p release
-          find artifacts -name "*.tar.gz" -o -name "*.zip" -o -name "*.deb" | while read f; do
-            cp "$f" release/
-          done
+          find artifacts -type f \( -name "*.exe" -o -name "*.dmg" -o -name "*.apk" -o -name "*.deb" -o -name "*.tar.gz" -o -name "*.zip" \) \
+            -exec cp {} release/ \;
           ls -la release/
 
       - name: Publish release

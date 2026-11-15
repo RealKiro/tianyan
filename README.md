@@ -103,13 +103,15 @@ go run ./cmd/student -teacher 192.168.1.10 -name 01号机 -group 第一组
 
 推送 `v*` 标签时 CI 自动构建全部安装包并发布到 GitHub Release：
 
-| 平台 | 产物 | 功能状态 |
+| 平台 | 标准格式安装包 | 功能状态 |
 | --- | --- | --- |
-| Windows amd64 | zip（教师端+学生端，`-install` 计划任务安装） | 功能最完整 |
-| Linux amd64/arm64（含 UOS 统信、麒麟） | deb（登录自启桌面入口）+ tar.gz + systemd 单元 | 静态编译免 glibc 依赖；屏幕监控广播可用（X11），键鼠注入/锁屏待完善 |
+| Windows amd64 | **exe 安装程序**（NSIS：学生端装完自动注册开机自启计划任务；教师端含开始菜单/桌面快捷方式）+ 便携 zip | 功能最完整 |
+| Linux amd64/arm64（含 UOS 统信、麒麟） | **deb**（含 `/etc/xdg/autostart` 登录自启 + systemd 单元）+ tar.gz | 静态编译免 glibc 依赖；屏幕监控广播可用（X11），键鼠注入/锁屏待完善 |
 | 统信 UOS 龙芯 loong64 / 旧 MIPS | deb + tar.gz | 屏幕采集依赖暂无移植，学生端其余功能（消息/文件/锁屏/策略）可用 |
-| macOS amd64 (Intel) / arm64 (Apple Silicon) | tar.gz（.app 包，ad-hoc 签名） | 音量/开关机/打开应用可用；屏幕采集原生编译 |
-| Android arm64（实验性） | tar.gz（Termux 运行） | 仅举手/消息/作业/广播请求（网页工具栏），无屏幕采集与注入 |
+| macOS amd64 (Intel) / arm64 (Apple Silicon) | **dmg**（拖拽安装，含教师端 + 学生端 .app，ad-hoc 签名） | 音量/开关机/打开应用可用；屏幕采集原生编译 |
+| Android arm64（实验性） | **apk**（gomobile 打包）+ Termux tar.gz | 无屏幕采集与注入；客户端后台进程可连接教师端 |
+
+> 首次运行 macOS 包：右键 → 打开（绕过 Gatekeeper），或安装后执行 `xattr -cr /Applications/TianYan-*.app`。Android apk 为实验性质：安装后后台运行客户端进程（会在教师端上线），触控交互能力受限。
 
 **iOS / iPadOS / 鸿蒙暂不提供安装包**，原因：iPad 需 App Store 签名分发且系统沙箱禁止屏幕采集与键鼠注入；鸿蒙 5+（ArkTS）无 Go 工具链，鸿蒙 4 及以下虽兼容安卓 APK 但本项目尚无安卓 GUI 客户端——如需移动端支持欢迎贡献。
 
